@@ -75,9 +75,9 @@ cd OpenWhisk
 Push the invoker image to each invoker host:
 
 ```bash
-docker save openwhisk/invoker | ssh sp26-cs525-1819.cs.illinois.edu 'docker load'
-docker save openwhisk/invoker | ssh sp26-cs525-1818.cs.illinois.edu 'docker load'
-docker save openwhisk/invoker | ssh sp26-cs525-1817.cs.illinois.edu 'docker load'
+docker save whisk/invoker | ssh sp26-cs525-1819.cs.illinois.edu 'docker load'
+docker save whisk/invoker | ssh sp26-cs525-1818.cs.illinois.edu 'docker load'
+docker save whisk/invoker | ssh sp26-cs525-1817.cs.illinois.edu 'docker load'
 ```
 
 ## Step 4: Configure the environment
