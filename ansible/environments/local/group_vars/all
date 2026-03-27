@@ -44,7 +44,7 @@ kafka_topics_invoker_retentionBytes: 104857600
 kafka_topics_invoker_retentionMS: 300000
 
 env_hosts_dir: "{{ playbook_dir }}/environments/local"
-ansible_python_interpreter: "/opt/miniconda3/bin/python"
+ansible_python_interpreter: "/usr/bin/python"
 
 container_pool_pekko_client: true
 scheduler_enable: false
