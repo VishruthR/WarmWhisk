@@ -129,21 +129,21 @@ wsk -i action create fib_wasm wasm_programs/fib.wasm --kind wasm:wasmtime --main
 wsk -i action invoke fib_wasm --result --param n 10
 ```
 
-## Troubleshooting
+## Shutting Down
 
-**Ansible can't connect to invoker hosts**: Verify SSH works without a password
-prompt. Check that `ansible_connection=ssh` is set for invoker entries in
-`hosts.j2.ini`.
+From the control machine:
 
-**`/var` filling up**: Docker should write to `/srv/docker`. Verify with
-`docker info | grep "Docker Root Dir"`. If it still shows `/var/lib/docker`,
-restart Docker: `sudo systemctl stop docker docker.socket && sudo systemctl start docker`.
+```bash
+cd OpenWhisk
+./shut_down_ow.sh
+```
 
-**`http+docker` URL scheme error**: Install `requests<2.32.0` for the Python
-that Ansible uses: `pip3 install 'requests<2.32.0'`.
+This runs `openwhisk.yml` and `couchdb.yml` with `-e mode=clean`, which tears
+down all OpenWhisk and CouchDB containers across all hosts (including remote
+invokers). It also stops the `etcd0` and `scheduler0` containers on the control
+machine.
 
-**Invoker container fails to start on remote host**: Ensure the Docker image
-was loaded (`docker images | grep openwhisk/invoker` on the invoker host).
+**Warning**: This wipes the CouchDB database. All action definitions and
+activation records will be lost.
 
-**OpenSSL `invalid digest` error during setup**: The `genssl.sh` script
-needs `-sha256` instead of `-sha1`. This is already patched in the repo.
+To redeploy after shutting down, run `./start_up_ow.sh` again (Step 5).
