@@ -113,6 +113,11 @@ class InvokerWASM(
     activationStore.storeAfterCheck(activation, isBlocking, None, None, context)(tid, notifier = None, logging)
   }
 
+  private def deleteRecursively(file: java.io.File): Unit = {
+    if (file.isDirectory) file.listFiles().foreach(deleteRecursively)
+    file.delete()
+  }
+
   private def argToString(v: JsValue): String = v match {
     case JsString(s)  => s
     case JsNumber(n)  => n.toString
@@ -143,14 +148,16 @@ class InvokerWASM(
         Future {
           val bytes = java.util.Base64.getDecoder.decode(code)
           val tmp = java.io.File.createTempFile("wasm-action-", ".wasm")
+          val workDir = java.nio.file.Files.createTempDirectory("wasm-work-").toFile
           try {
             val fos = new java.io.FileOutputStream(tmp)
             try fos.write(bytes) finally fos.close()
 
             val started = Instant.now
-            val command = Seq(wasmtimeBinary, tmp.getAbsolutePath) ++ args
+            val command = Seq(wasmtimeBinary, "--dir", s"${workDir.getAbsolutePath}::.", tmp.getAbsolutePath) ++ args
             logging.info(this, s"executing: ${command.mkString(" ")}")
             val processBuilder = new ProcessBuilder(command: _*)
+            processBuilder.directory(workDir)
             processBuilder.redirectErrorStream(true)
             val process = processBuilder.start()
             process.getOutputStream.close()
@@ -179,6 +186,7 @@ class InvokerWASM(
             (response, started, Instant.now)
           } finally {
             tmp.delete()
+            deleteRecursively(workDir)
           }
         }
 

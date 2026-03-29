@@ -20,11 +20,19 @@ wsk -i action create hello programs/hello.js --kind nodejs:default
 
 # Run that action
 # -r gets the result since actions are invoked asynchronously
-wsk -i action invoke hello -r
+wsk -i action invoke hello -r 
 ```
 
 ### CouchDB
 You can navigate CouchDB using cURL commands, the web UI at (`http://127.0.0.1:5984/_utils`), or the CouchDB python client.
+
+```
+# List all activations
+curl -s http://whisk_admin:some_passw0rd@127.0.0.1:5984/whisk_local_activations/_all_docs
+
+# Fetch a specific activation
+curl -s -X POST -H "Content-Type: application/json"   -d '{"selector": {"activationId": "282507583dd94a40a507583dd9ba40f9"}}'   http://whisk_admin:some_passw0rd@127.0.0.1:5984/whisk_local_activations/_find | jq .
+```
 
 ### Using with WASM
 
@@ -32,6 +40,9 @@ You can navigate CouchDB using cURL commands, the web UI at (`http://127.0.0.1:5
 # Create fib action
 # when compiling from Rust, "main" gets renamed to "_start"
 wsk -i action create fib_wasm wasm_programs/fib.wasm --kind wasm:wasmtime --main _start
+
+# Invoking that action
+wsk -i action invoke fib_wasm fib_wasm --param n 10 -r
 ```
 
 ### Developing
