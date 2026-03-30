@@ -31,7 +31,7 @@ You can navigate CouchDB using cURL commands, the web UI at (`http://127.0.0.1:5
 curl -s http://whisk_admin:some_passw0rd@127.0.0.1:5984/whisk_local_activations/_all_docs
 
 # Fetch a specific activation
-curl -s -X POST -H "Content-Type: application/json"   -d '{"selector": {"activationId": "282507583dd94a40a507583dd9ba40f9"}}'   http://whisk_admin:some_passw0rd@127.0.0.1:5984/whisk_local_activations/_find | jq .
+curl -s -X POST -H "Content-Type: application/json"   -d '{"selector": {"activationId": "bad33182b46d4472933182b46da47224"}}'   http://whisk_admin:some_passw0rd@127.0.0.1:5984/whisk_local_activations/_find | jq .
 ```
 
 ### Using with WASM
@@ -56,4 +56,11 @@ ansible-playbook -i environments/$ENVIRONMENT invoker.yml
 
 # Compiling a rs file with wasmtime
 rustc --target wasm32-wasip1 -O "wasm_programs/fib.rs" -o "wasm_programs/fib.wasm"
+```
+
+### Benchmarks
+
+```
+# Run the benchmark trace
+./target/release/wasm-loadgen --trace ../faasrail-shrinkray/artifacts/wasm-trace-spec.csv --minutes 1 2>&1 | head -30
 ```

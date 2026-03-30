@@ -154,7 +154,7 @@ class InvokerWASM(
             try fos.write(bytes) finally fos.close()
 
             val started = Instant.now
-            val command = Seq(wasmtimeBinary, "--dir", s"${workDir.getAbsolutePath}::.", tmp.getAbsolutePath) ++ args
+            val command = Seq(wasmtimeBinary, "--dir", ".", tmp.getAbsolutePath) ++ args
             logging.info(this, s"executing: ${command.mkString(" ")}")
             val processBuilder = new ProcessBuilder(command: _*)
             processBuilder.directory(workDir)

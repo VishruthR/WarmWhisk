@@ -56,3 +56,8 @@ invoker_health_test_action_name: "invokerHealthTestActionWASM"
 runtimes_enable_concurrency: true
 limit_action_concurrency_max: 500
 namespace_default_limit_action_concurrency_max: 500
+
+# Arbitrary rate limits since we are benchmarking
+limit_invocations_per_minute: 999
+limit_invocations_concurrent: 999
+limit_fires_per_minute: 999
