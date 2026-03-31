@@ -34,7 +34,7 @@
 - include_tasks: db/recreateDoc.yml
   vars:
     dbName: "{{ db.whisk.auth }}"
-    doc: "{{ lookup('file', '{{ item }}') }}"
+    doc: "{{ lookup('file', item) | from_json }}"
   with_items:
     - "{{ openwhisk_home }}/ansible/files/auth_design_document_for_subjects_db_v2.0.0.json"
     - "{{ openwhisk_home }}/ansible/files/filter_design_document.json"
@@ -43,26 +43,15 @@
 - name: create necessary "auth" keys
   include_tasks: db/recreateDoc.yml
   vars:
-    key: "{{ lookup('file', 'files/auth.{{ item }}') }}"
+    key: "{{ lookup('file', openwhisk_home + '/ansible/files/auth.' + item) }}"
     dbName: "{{ db.whisk.auth }}"
-    doc: >
-      {
-        "_id": "{{ item }}",
-        "subject": "{{ item }}",
-        "namespaces": [
-        {% if 'extraNamespaces' in db and item in db.extraNamespaces %}
-          {% for ns in db.extraNamespaces[item] %}
-          {
-            "name": "{{ item }}{{ ns.postfix }}",
-            "uuid": "{{ ns.uuid }}",
-            "key": "{{ ns.key }}"
-          },
-          {% endfor %}
-        {% endif %}
-          {
-            "name": "{{ item }}",
-            "uuid": "{{ key.split(":")[0] }}",
-            "key": "{{ key.split(":")[1] }}"
-          }]
-      }
+    doc: "{{ {
+        '_id': item,
+        'subject': item,
+        'namespaces': [{
+          'name': item,
+          'uuid': key.split(':')[0],
+          'key': key.split(':')[1]
+        }]
+      } }}"
   with_items: "{{ db.authkeys }}"

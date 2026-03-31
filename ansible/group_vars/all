@@ -74,7 +74,7 @@ whisk:
 #
 
 manifestfile: "{{ manifest_file | default('/ansible/files/runtimes.json') }}"
-runtimesManifest: "{{ runtimes_manifest | default(lookup('file', openwhisk_home ~ '{{ manifestfile }}') | from_json) }}"
+runtimesManifest: "{{ runtimes_manifest | default(lookup('file', openwhisk_home ~ manifestfile) | from_json) }}"
 
 limits:
   invocationsPerMinute: "{{ limit_invocations_per_minute | default(60) }}"
@@ -143,7 +143,7 @@ jmx:
   user: "{{ jmxuser | default('jmxuser') }}"
   pass: "{{ jmxuser | default('jmxpass') }}"
   jvmCommonArgs: "-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.local.only=false -Dcom.sun.management.jmxremote.authenticate=true -Dcom.sun.management.jmxremote.password.file=/home/owuser/jmxremote.password -Dcom.sun.management.jmxremote.access.file=/home/owuser/jmxremote.access"
-  enabled: "{{ jmxremote_enabled | default('true') }}"
+  enabled: "{{ jmxremote_enabled | default('true') | bool}}"
 
 transactions:
   header: "{{ transactions_header | default('X-Request-ID') }}"
@@ -279,10 +279,10 @@ nginx:
 # The key db.whisk.auth is the name of the authentication database where all keys of all users are stored.
 # The db_prefix is defined for each environment on its own. The CouchDb credentials are also defined for each environment on its own.
 db:
-  provider: "{{ db_provider | default(lookup('ini', 'db_provider section=db_creds file={{ playbook_dir }}/db_local.ini')) }}"
-  protocol: "{{ db_protocol | default(lookup('ini', 'db_protocol section=db_creds file={{ playbook_dir }}/db_local.ini')) }}"
-  port: "{{ db_port | default(lookup('ini', 'db_port section=db_creds file={{ playbook_dir }}/db_local.ini')) }}"
-  host: "{{ db_host | default(lookup('ini', 'db_host section=db_creds file={{ playbook_dir }}/db_local.ini')) }}"
+  provider: "{{ db_provider | default(lookup('ini', 'db_provider section=db_creds file=' + playbook_dir + '/db_local.ini')) }}"
+  protocol: "{{ db_protocol | default(lookup('ini', 'db_protocol section=db_creds file=' + playbook_dir + '/db_local.ini')) }}"
+  port: "{{ db_port | default(lookup('ini', 'db_port section=db_creds file=' + playbook_dir + '/db_local.ini')) }}"
+  host: "{{ db_host | default(lookup('ini', 'db_host section=db_creds file=' + playbook_dir + '/db_local.ini')) }}"
   persist_path: "{{ db_persist_path | default(false) }}"
   instances: "{{ groups['db'] | length }}"
   authkeys:
@@ -294,17 +294,17 @@ db:
     auth: "{{ db_prefix }}subjects"
   credentials:
     admin:
-      user: "{{ db_username | default(lookup('ini', 'db_username section=db_creds file={{ playbook_dir }}/db_local.ini')) }}"
-      pass: "{{ db_password | default(lookup('ini', 'db_password section=db_creds file={{ playbook_dir }}/db_local.ini')) }}"
+      user: "{{ db_username | default(lookup('ini', 'db_username section=db_creds file=' + playbook_dir + '/db_local.ini')) }}"
+      pass: "{{ db_password | default(lookup('ini', 'db_password section=db_creds file=' + playbook_dir + '/db_local.ini')) }}"
     controller:
-      user: "{{ db_controller_user | default(lookup('ini', 'db_username section=controller file={{ playbook_dir }}/db_local.ini')) }}"
-      pass: "{{ db_controller_pass | default(lookup('ini', 'db_password section=controller file={{ playbook_dir }}/db_local.ini')) }}"
+      user: "{{ db_controller_user | default(lookup('ini', 'db_username section=controller file=' + playbook_dir + '/db_local.ini')) }}"
+      pass: "{{ db_controller_pass | default(lookup('ini', 'db_password section=controller file=' + playbook_dir + '/db_local.ini')) }}"
     invoker:
-      user: "{{ db_invoker_user | default(lookup('ini', 'db_username section=invoker file={{ playbook_dir }}/db_local.ini')) }}"
-      pass: "{{ db_invoker_pass | default(lookup('ini', 'db_password section=invoker file={{ playbook_dir }}/db_local.ini')) }}"
+      user: "{{ db_invoker_user | default(lookup('ini', 'db_username section=invoker file=' + playbook_dir + '/db_local.ini')) }}"
+      pass: "{{ db_invoker_pass | default(lookup('ini', 'db_password section=invoker file=' + playbook_dir + '/db_local.ini')) }}"
     scheduler:
-      user: "{{ db_scheduler_user | default(lookup('ini', 'db_username section=scheduler file={{ playbook_dir }}/db_local.ini')) }}"
-      pass: "{{ db_scheduler_pass | default(lookup('ini', 'db_password section=scheduler file={{ playbook_dir }}/db_local.ini')) }}"
+      user: "{{ db_scheduler_user | default(lookup('ini', 'db_username section=scheduler file=' + playbook_dir + '/db_local.ini')) }}"
+      pass: "{{ db_scheduler_pass | default(lookup('ini', 'db_password section=scheduler file=' + playbook_dir + '/db_local.ini')) }}"
   artifact_store:
     backend: "{{ db_artifact_backend | default('CouchDB') }}"
   activation_store:
