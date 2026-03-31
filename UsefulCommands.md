@@ -42,7 +42,7 @@ curl -s -X POST -H "Content-Type: application/json"   -d '{"selector": {"activat
 wsk -i action create fib_wasm wasm_programs/fib.wasm --kind wasm:wasmtime --main _start
 
 # Invoking that action
-wsk -i action invoke fib_wasm fib_wasm --param n 10 -r
+wsk -i action invoke fib_wasm --param n 10 -r
 ```
 
 ### Developing
