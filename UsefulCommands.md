@@ -64,3 +64,13 @@ rustc --target wasm32-wasip1 -O "wasm_programs/fib.rs" -o "wasm_programs/fib.was
 # Run the benchmark trace
 ./target/release/wasm-loadgen --trace ../faasrail-shrinkray/artifacts/wasm-trace-spec.csv --minutes 1 2>&1 | head -30
 ```
+
+### Metrics
+
+```
+# system events, exported both by controller and invokers
+curl -sk https://127.0.0.1:10001/metrics
+
+# user events
+curl http://127.0.0.1:9095/metrics
+```

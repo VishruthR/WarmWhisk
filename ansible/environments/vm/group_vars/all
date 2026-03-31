@@ -61,3 +61,9 @@ namespace_default_limit_action_concurrency_max: 500
 limit_invocations_per_minute: 999
 limit_invocations_concurrent: 999
 limit_fires_per_minute: 999
+
+# Metrics: Ansible sets METRICS_* on containers; these override application.conf (see whisk.metrics in application.conf)
+metrics_kamon: true
+metrics_kamon_tags: true
+# Publish activation events to Kafka for the user-events service (CONFIG_whisk_userEvents_enabled)
+user_events_enabled: true
