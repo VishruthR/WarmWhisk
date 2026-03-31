@@ -7,16 +7,12 @@ source .env
 set +a
 
 # Rebuilds docker containers (maybe make this optional?)
-./gradlew distDocker
+# ./gradlew distDocker
 
 # Restarts from scratch, maybe make these steps optional?
 cd ansible
-ansible-playbook -i environments/$ENVIRONMENT setup.yml
-ansible-playbook -i environments/$ENVIRONMENT couchdb.yml
-ansible-playbook -i environments/$ENVIRONMENT initdb.yml
-ansible-playbook -i environments/$ENVIRONMENT wipe.yml
-ansible-playbook -i environments/$ENVIRONMENT openwhisk.yml -e skip_pull_runtimes=true
+ansible-playbook -i environments/vm controller.yml
+ansible-playbook -i environments/vm invoker.yml
 cd ..
 
 # Registers toy command for convenience
-wsk -i action create fib_wasm wasm_programs/fib.wasm --kind wasm:wasmtime --main _start

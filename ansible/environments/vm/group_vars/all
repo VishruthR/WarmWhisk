@@ -58,6 +58,6 @@ limit_action_concurrency_max: 500
 namespace_default_limit_action_concurrency_max: 500
 
 # Arbitrary rate limits since we are benchmarking
-limit_invocations_per_minute: 999
-limit_invocations_concurrent: 999
-limit_fires_per_minute: 999
+limit_invocations_per_minute: 999999
+limit_invocations_concurrent: 999999
+limit_fires_per_minute: 999999
