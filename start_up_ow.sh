@@ -28,3 +28,4 @@ docker run -d --name user-events \
   -p 9095:9095 \
   -e KAFKA_HOSTS=172.17.0.1:9093 \
   whisk/user-events:latest
+
