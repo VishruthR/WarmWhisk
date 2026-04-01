@@ -1,0 +1,31 @@
+# Prometheus scrape config for OpenWhisk (controller + user-events).
+# Usage (host networking / binary on same machine as OpenWhisk):
+#   prometheus --config.file=prometheus.yml
+#
+# Prometheus runs inside Docker; host.docker.internal resolves to the host on
+# Docker Desktop (macOS/Windows). On Linux use 172.17.0.1 or --network host.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["127.0.0.1:9090"]
+
+  - job_name: openwhisk-controller
+    scheme: https
+    tls_config:
+      insecure_skip_verify: true
+    static_configs:
+      - targets: ["host.docker.internal:8001"]
+        labels:
+          service: controller
+
+  - job_name: openwhisk-user-events
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["host.docker.internal:8005"]
+        labels:
+          service: user-events
