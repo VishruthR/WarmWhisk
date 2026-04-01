@@ -110,7 +110,7 @@ else
     -signkey "$SCRIPTDIR/openwhisk-client-ca-key.pem" \
     -passin pass:$PASSWORD \
     -out "$SCRIPTDIR/openwhisk-client-ca-cert.pem" \
-    -days 365 -sha1 -extensions v3_ca
+    -days 365 -sha256 -extensions v3_ca
 
     echo generating client key
     openssl genrsa -aes256 -passout pass:$PASSWORD -out "$SCRIPTDIR/openwhisk-client-key.pem" 2048
@@ -131,7 +131,7 @@ else
     -CAserial "$SCRIPTDIR/openwhisk-client-ca-cert.srl" \
     -passin pass:$PASSWORD \
     -out "$SCRIPTDIR/openwhisk-client-cert.pem" \
-    -days 365 -sha1 -extensions v3_req
+    -days 365 -sha256 -extensions v3_req
 
     echo remove client key\'s password
     openssl rsa \

@@ -22,18 +22,11 @@
 
 - name: add pekko port to ports_to_expose
   set_fact:
-    ports_to_expose: >-
-      {{ ports_to_expose }} +
-      [ "{{ (controller.pekko.cluster.basePort + (controller_index | int)) }}:"
-      + "{{ controller.pekko.cluster.bindPort }}" ]
+    ports_to_expose: "{{ ports_to_expose + [ (controller.pekko.cluster.basePort + (controller_index | int)) | string + ':' + controller.pekko.cluster.bindPort | string ] }}"
 
 - name: add seed nodes to controller environment
   set_fact:
-    env: >-
-      {{ env | combine({
-        'CONFIG_pekko_cluster_seedNodes_' ~ seedNode.0:
-          'pekko://controller-actor-system@'~seedNode.1~':'~(controller.pekko.cluster.basePort+seedNode.0)
-      }) }}
+    env: "{{ env | combine({ 'CONFIG_pekko_cluster_seedNodes_' ~ seedNode.0: 'pekko://controller-actor-system@' ~ seedNode.1 ~ ':' ~ (controller.pekko.cluster.basePort + seedNode.0) | string }) }}"
   with_indexed_items: "{{ controller.pekko.cluster.seedNodes }}"
   loop_control:
     loop_var: seedNode
@@ -45,9 +38,9 @@
       "CONFIG_pekko_remote_artery_canonical_hostname":
         "{{ controller.pekko.cluster.host[(controller_index | int)] }}"
       "CONFIG_pekko_remote_artery_canonical_port":
-        "{{ controller.pekko.cluster.basePort + (controller_index | int) }}"
+        "{{ (controller.pekko.cluster.basePort + (controller_index | int)) | string }}"
       "CONFIG_pekko_remote_artery_bind_hostname": "0.0.0.0"
       "CONFIG_pekko_remote_artery_bind_port":
-        "{{ controller.pekko.cluster.bindPort }}"
+        "{{ controller.pekko.cluster.bindPort | string }}"
   set_fact:
     env: "{{ env | combine(pekko_env) }}"

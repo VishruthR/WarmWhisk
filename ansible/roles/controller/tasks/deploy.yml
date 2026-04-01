@@ -118,19 +118,10 @@
   when: jmx.enabled
   vars:
     jmx_remote_port: "{{ jmx.basePortController + (controller_index|int) }}"
-    jmx_remote_rmi_port:
-      "{{ jmx.rmiBasePortController + (controller_index|int) }}"
+    jmx_remote_rmi_port: "{{ jmx.rmiBasePortController + (controller_index|int) }}"
   set_fact:
-    ports_to_expose: >-
-      {{ ports_to_expose }} +
-      [ '{{ jmx_remote_port }}:{{ jmx_remote_port }}' ] +
-      [ '{{ jmx_remote_rmi_port }}:{{ jmx_remote_rmi_port }}' ]
-    controller_args: >-
-      {{ controller.arguments }}
-      {{ jmx.jvmCommonArgs }}
-      -Djava.rmi.server.hostname={{ inventory_hostname }}
-      -Dcom.sun.management.jmxremote.rmi.port={{ jmx_remote_rmi_port }}
-      -Dcom.sun.management.jmxremote.port={{ jmx_remote_port }}
+    ports_to_expose: "{{ ports_to_expose + [ jmx_remote_port | string + ':' + jmx_remote_port | string ] + [ jmx_remote_rmi_port | string + ':' + jmx_remote_rmi_port | string ] }}"
+    controller_args: "{{ controller.arguments }} {{ jmx.jvmCommonArgs }} -Djava.rmi.server.hostname={{ inventory_hostname }} -Dcom.sun.management.jmxremote.rmi.port={{ jmx_remote_rmi_port }} -Dcom.sun.management.jmxremote.port={{ jmx_remote_port }}"
 
 - name: Load config from template
   set_fact:
@@ -147,7 +138,7 @@
         -XX:+HeapDumpOnOutOfMemoryError
         -XX:HeapDumpPath=/logs
       "CONTROLLER_OPTS": "{{ controller_args | default(controller.arguments) }}"
-      "JMX_REMOTE": "{{ jmx.enabled }}"
+      "JMX_REMOTE": "{{ jmx.enabled | string }}"
       "OPENWHISK_ENCODED_CONFIG": "{{ openwhisk_config }}"
       "PORT": "8080"
       "TZ": "{{ docker.timezone }}"
@@ -160,25 +151,25 @@
 
       "KAFKA_HOSTS": "{{ kafka_connect_string }}"
       "CONFIG_whisk_kafka_replicationFactor":
-        "{{ kafka.replicationFactor | default() }}"
+        "{{ kafka.replicationFactor | default() | string }}"
       "CONFIG_whisk_kafka_topics_cacheInvalidation_retentionBytes":
-        "{{ kafka_topics_cacheInvalidation_retentionBytes | default() }}"
+        "{{ kafka_topics_cacheInvalidation_retentionBytes | default() | string }}"
       "CONFIG_whisk_kafka_topics_cacheInvalidation_retentionMs":
-        "{{ kafka_topics_cacheInvalidation_retentionMS | default() }}"
+        "{{ kafka_topics_cacheInvalidation_retentionMS | default() | string }}"
       "CONFIG_whisk_kafka_topics_cacheInvalidation_segmentBytes":
-        "{{ kafka_topics_cacheInvalidation_segmentBytes | default() }}"
+        "{{ kafka_topics_cacheInvalidation_segmentBytes | default() | string }}"
       "CONFIG_whisk_kafka_topics_completed_retentionBytes":
-        "{{ kafka_topics_completed_retentionBytes | default() }}"
+        "{{ kafka_topics_completed_retentionBytes | default() | string }}"
       "CONFIG_whisk_kafka_topics_completed_retentionMs":
-        "{{ kafka_topics_completed_retentionMS | default() }}"
+        "{{ kafka_topics_completed_retentionMS | default() | string }}"
       "CONFIG_whisk_kafka_topics_completed_segmentBytes":
-        "{{ kafka_topics_completed_segmentBytes | default() }}"
+        "{{ kafka_topics_completed_segmentBytes | default() | string }}"
       "CONFIG_whisk_kafka_topics_health_retentionBytes":
-        "{{ kafka_topics_health_retentionBytes | default() }}"
+        "{{ kafka_topics_health_retentionBytes | default() | string }}"
       "CONFIG_whisk_kafka_topics_health_retentionMs":
-        "{{ kafka_topics_health_retentionMS | default() }}"
+        "{{ kafka_topics_health_retentionMS | default() | string }}"
       "CONFIG_whisk_kafka_topics_health_segmentBytes":
-        "{{ kafka_topics_health_segmentBytes | default() }}"
+        "{{ kafka_topics_health_segmentBytes | default() | string }}"
       "CONFIG_whisk_kafka_topics_prefix":
         "{{ kafka.topicsPrefix }}"
       "CONFIG_whisk_kafka_topics_userEvent_prefix":
@@ -204,53 +195,53 @@
       "CONFIG_whisk_couchdb_databases_WhiskEntity": "{{ db.whisk.actions }}"
       "CONFIG_whisk_couchdb_databases_WhiskActivation":
         "{{ db.whisk.activations }}"
-      "CONFIG_whisk_db_subjectsDdoc": "{{ db_whisk_subjects_ddoc | default() }}"
-      "CONFIG_whisk_db_actionsDdoc": "{{ db_whisk_actions_ddoc | default() }}"
-      "CONFIG_whisk_db_activationsDdoc": "{{ db_whisk_activations_ddoc | default() }}"
-      "CONFIG_whisk_db_activationsFilterDdoc": "{{ db_whisk_activations_filter_ddoc | default() }}"
+      "CONFIG_whisk_db_subjectsDdoc": "{{ db_whisk_subjects_ddoc | default() | string }}"
+      "CONFIG_whisk_db_actionsDdoc": "{{ db_whisk_actions_ddoc | default() | string }}"
+      "CONFIG_whisk_db_activationsDdoc": "{{ db_whisk_activations_ddoc | default() | string }}"
+      "CONFIG_whisk_db_activationsFilterDdoc": "{{ db_whisk_activations_filter_ddoc | default() | string }}"
       "CONFIG_whisk_userEvents_enabled": "{{ user_events | default(false) | lower }}"
 
-      "LIMITS_ACTIONS_INVOKES_PERMINUTE": "{{ limits.invocationsPerMinute }}"
-      "LIMITS_ACTIONS_INVOKES_CONCURRENT": "{{ limits.concurrentInvocations }}"
-      "LIMITS_TRIGGERS_FIRES_PERMINUTE": "{{ limits.firesPerMinute }}"
-      "LIMITS_ACTIONS_SEQUENCE_MAXLENGTH": "{{ limits.sequenceMaxLength }}"
+      "LIMITS_ACTIONS_INVOKES_PERMINUTE": "{{ limits.invocationsPerMinute | string }}"
+      "LIMITS_ACTIONS_INVOKES_CONCURRENT": "{{ limits.concurrentInvocations | string }}"
+      "LIMITS_TRIGGERS_FIRES_PERMINUTE": "{{ limits.firesPerMinute | string }}"
+      "LIMITS_ACTIONS_SEQUENCE_MAXLENGTH": "{{ limits.sequenceMaxLength | string }}"
 
-      "CONFIG_whisk_memory_min": "{{ limit_action_memory_min | default() }}"
-      "CONFIG_whisk_memory_max": "{{ limit_action_memory_max | default() }}"
-      "CONFIG_whisk_memory_std": "{{ limit_action_memory_std | default() }}"
+      "CONFIG_whisk_memory_min": "{{ limit_action_memory_min | default() | string }}"
+      "CONFIG_whisk_memory_max": "{{ limit_action_memory_max | default() | string }}"
+      "CONFIG_whisk_memory_std": "{{ limit_action_memory_std | default() | string }}"
 
-      "CONFIG_whisk_timeLimit_min": "{{ limit_action_time_min | default() }}"
-      "CONFIG_whisk_timeLimit_max": "{{ limit_action_time_max | default() }}"
-      "CONFIG_whisk_timeLimit_std": "{{ limit_action_time_std | default() }}"
+      "CONFIG_whisk_timeLimit_min": "{{ limit_action_time_min | default() | string }}"
+      "CONFIG_whisk_timeLimit_max": "{{ limit_action_time_max | default() | string }}"
+      "CONFIG_whisk_timeLimit_std": "{{ limit_action_time_std | default() | string }}"
 
-      "CONFIG_whisk_concurrencyLimit_min": "{{ limit_action_concurrency_min | default() }}"
-      "CONFIG_whisk_concurrencyLimit_max": "{{ limit_action_concurrency_max | default() }}"
-      "CONFIG_whisk_concurrencyLimit_std": "{{ limit_action_concurrency_std | default() }}"
+      "CONFIG_whisk_concurrencyLimit_min": "{{ limit_action_concurrency_min | default() | string }}"
+      "CONFIG_whisk_concurrencyLimit_max": "{{ limit_action_concurrency_max | default() | string }}"
+      "CONFIG_whisk_concurrencyLimit_std": "{{ limit_action_concurrency_std | default() | string }}"
 
-      "CONFIG_whisk_namespaceDefaultLimit_memory_min": "{{ namespace_default_limit_action_memory_min | default() }}"
-      "CONFIG_whisk_namespaceDefaultLimit_memory_max": "{{ namespace_default_limit_action_memory_max | default() }}"
+      "CONFIG_whisk_namespaceDefaultLimit_memory_min": "{{ namespace_default_limit_action_memory_min | default() | string }}"
+      "CONFIG_whisk_namespaceDefaultLimit_memory_max": "{{ namespace_default_limit_action_memory_max | default() | string }}"
 
-      "CONFIG_whisk_namespaceDefaultLimit_timeLimit_min": "{{ namespace_default_limit_action_time_min | default() }}"
-      "CONFIG_whisk_namespaceDefaultLimit_timeLimit_max": "{{ namespace_default_limit_action_time_max | default() }}"
+      "CONFIG_whisk_namespaceDefaultLimit_timeLimit_min": "{{ namespace_default_limit_action_time_min | default() | string }}"
+      "CONFIG_whisk_namespaceDefaultLimit_timeLimit_max": "{{ namespace_default_limit_action_time_max | default() | string }}"
 
-      "CONFIG_whisk_namespaceDefaultLimit_concurrencyLimit_min": "{{ namespace_default_limit_action_concurrency_min | default() }}"
-      "CONFIG_whisk_namespaceDefaultLimit_concurrencyLimit_max": "{{ namespace_default_limit_action_concurrency_max | default() }}"
+      "CONFIG_whisk_namespaceDefaultLimit_concurrencyLimit_min": "{{ namespace_default_limit_action_concurrency_min | default() | string }}"
+      "CONFIG_whisk_namespaceDefaultLimit_concurrencyLimit_max": "{{ namespace_default_limit_action_concurrency_max | default() | string }}"
 
       "CONFIG_whisk_featureFlags_requireApiKeyAnnotation": "{{ whisk.feature_flags.require_api_key_annotation | default(true) | lower }}"
       "CONFIG_whisk_featureFlags_requireResponsePayload": "{{ whisk.feature_flags.require_response_payload | default(true) | lower }}"
 
       "CONFIG_whisk_activation_payload_max":
-        "{{ limit_activation_payload | default() }}"
+        "{{ limit_activation_payload | default() | string }}"
 
       "RUNTIMES_MANIFEST": "{{ runtimesManifest | to_json }}"
       "CONFIG_whisk_runtimes_defaultImagePrefix":
-        "{{ runtimes_default_image_prefix | default() }}"
+        "{{ runtimes_default_image_prefix | default() | string }}"
       "CONFIG_whisk_runtimes_defaultImageTag":
-        "{{ runtimes_default_image_tag | default() }}"
+        "{{ runtimes_default_image_tag | default() | string }}"
       "CONFIG_whisk_runtimes_bypassPullForLocalImages":
         "{{ runtimes_bypass_pull_for_local_images | default() | lower }}"
       "CONFIG_whisk_runtimes_localImagePrefix":
-        "{{ runtimes_local_image_prefix | default() }}"
+        "{{ runtimes_local_image_prefix | default() | string }}"
 
       "METRICS_KAMON": "{{ metrics.kamon.enabled | default(false) | lower }}"
       "METRICS_KAMON_TAGS": "{{ metrics.kamon.tags | default() | lower }}"
@@ -263,15 +254,17 @@
       "CONFIG_whisk_controller_https_keystoreFlavor":
         "{{ controller.ssl.storeFlavor }}"
       "CONFIG_whisk_controller_https_clientAuth":
-        "{{ controller.ssl.clientAuth }}"
+        "{{ controller.ssl.clientAuth | string }}"
       "CONFIG_whisk_loadbalancer_managedFraction":
-        "{{ controller.managedFraction }}"
+        "{{ controller.managedFraction | string }}"
       "CONFIG_whisk_loadbalancer_blackboxFraction":
-        "{{ controller.blackboxFraction }}"
+        "{{ controller.blackboxFraction | string}}"
       "CONFIG_whisk_loadbalancer_timeoutFactor":
-        "{{ controller.timeoutFactor }}"
+        "{{ controller.timeoutFactor | string}}"
       "CONFIG_whisk_loadbalancer_timeoutAddon":
         "{{ controller.timeoutAddon }}"
+      "CONFIG_whisk_loadbalancer_invokerHealthTestAction_name":
+        "{{ invoker_health_test_action_name | default('invokerHealthTestAction') }}"
 
       "CONFIG_kamon_statsd_hostname": "{{ metrics.kamon.host }}"
       "CONFIG_kamon_statsd_port": "{{ metrics.kamon.port }}"
@@ -325,10 +318,10 @@
   set_fact:
     scheduler_env:
       "CONFIG_whisk_etcd_hosts": "{{ etcd_connect_string }}"
-      "CONFIG_whisk_etcd_lease_timeout": "{{ etcd.lease.timeout }}"
-      "CONFIG_whisk_etcd_pool_threads": "{{ etcd.pool_threads }}"
+      "CONFIG_whisk_etcd_lease_timeout": "{{ etcd.lease.timeout | string }}"
+      "CONFIG_whisk_etcd_pool_threads": "{{ etcd.pool_threads | string }}"
+      "CONFIG_whisk_scheduler_maxPeek": "{{ scheduler.maxPeek | string }}"
       "CONFIG_whisk_scheduler_grpc_tls": "{{ scheduler.grpc.tls | default('false') | lower }}"
-      "CONFIG_whisk_scheduler_maxPeek": "{{ scheduler.maxPeek }}"
       "CONFIG_whisk_spi_LoadBalancerProvider": "org.apache.openwhisk.core.loadBalancer.FPCPoolBalancer"
       "CONFIG_whisk_spi_EntitlementSpiProvider": "org.apache.openwhisk.core.entitlement.FPCEntitlementProvider"
   when: enable_scheduler
