@@ -61,3 +61,7 @@ namespace_default_limit_action_concurrency_max: 500
 limit_invocations_per_minute: 999999
 limit_invocations_concurrent: 999999
 limit_fires_per_minute: 999999
+
+invoker_user_memory: 8192m
+invoker_numcore: 8
+controller_client_auth_whisk_wait_time: 120 seconds

@@ -1,8 +1,9 @@
-use std::collections::HashMap;
+extern crate serde_json;
+use serde_json::{Error, Value};
 
-fn main_fn(params: &HashMap<String, String>) -> HashMap<String, String> {
-    let name = params.get("name").map(|s| s.as_str()).unwrap_or("");
-    let mut result = HashMap::new();
-    result.insert("message".to_string(), format!("Hello {}", name));
-    result
+
+pub fn main(args: Value) -> Result<Value, Error> {
+    let name = args["name"].as_str().unwrap_or("stranger");
+    let output = serde_json::json!({ "message": format!("Hello, {}", name) });
+    serde_json::to_value(output)
 }
