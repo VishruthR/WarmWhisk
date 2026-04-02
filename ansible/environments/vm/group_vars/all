@@ -65,3 +65,9 @@ limit_fires_per_minute: 999999
 invoker_user_memory: 8192m
 invoker_numcore: 8
 controller_client_auth_whisk_wait_time: 120 seconds
+
+# Metrics: Ansible sets METRICS_* on containers; these override application.conf (see whisk.metrics in application.conf)
+metrics_kamon: true
+metrics_kamon_tags: true
+# Publish activation events to Kafka for the user-events service (CONFIG_whisk_userEvents_enabled)
+user_events_enabled: true
