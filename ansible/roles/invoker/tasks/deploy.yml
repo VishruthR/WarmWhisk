@@ -448,6 +448,38 @@
     command: /bin/sh -c "exec /init.sh --id {{ invoker_index }} --uniqueName {{ invoker_index }} >> /logs/{{ invoker_name }}_logs.log 2>&1"
   when: not lean
 
+# Using specific commit since pulling versions was failing
+- name: pull cAdvisor image
+  shell: "docker pull {{ invoker_cadvisor_image | default('ghcr.io/google/cadvisor:7cbdee9-7cbdee9260c4292d5d27d00416ce8a7dc1dc12a0') }}"
+  register: cadvisor_pull
+  until: cadvisor_pull.rc == 0
+  retries: "{{ docker.pull.retries }}"
+  delay: "{{ docker.pull.delay }}"
+  when: not lean and (invoker_cadvisor_enabled | default(true) | bool)
+
+- name: start cAdvisor
+  docker_container:
+    name: "cadvisor-{{ invoker_name }}"
+    image: "{{ invoker_cadvisor_image | default('ghcr.io/google/cadvisor:7cbdee9-7cbdee9260c4292d5d27d00416ce8a7dc1dc12a0') }}"
+    privileged: true
+    userns_mode: host
+    pid_mode: host
+    restart_policy: "{{ docker.restart.policy }}"
+    state: started
+    recreate: true
+    ports:
+      - "{{ invoker_cadvisor_port | default(8005) }}:8080"
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - "{{ dockerInfo['DockerRootDir'] }}:{{ dockerInfo['DockerRootDir'] }}:ro"
+      - /dev/disk/:/dev/disk:ro
+  when: not lean and (invoker_cadvisor_enabled | default(true) | bool)
+
 - name: wait until Invoker is up and running
   block:
     - uri:

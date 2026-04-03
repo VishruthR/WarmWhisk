@@ -19,7 +19,7 @@ ansible-playbook -i environments/$ENVIRONMENT setup.yml
 ansible-playbook -i environments/$ENVIRONMENT couchdb.yml
 ansible-playbook -i environments/$ENVIRONMENT initdb.yml
 ansible-playbook -i environments/$ENVIRONMENT wipe.yml
-ansible-playbook -i environments/$ENVIRONMENT openwhisk.yml -e skip_pull_runtimes=true
+ansible-playbook -i environments/$ENVIRONMENT openwhisk.yml
 cd ..
 
 # run metrics service
