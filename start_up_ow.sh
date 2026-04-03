@@ -9,9 +9,9 @@ set +a
 # Rebuilds docker containers (maybe make this optional?)
 ./gradlew distDocker
 
-docker save whisk/invoker | ssh sp26-cs525-1819.cs.illinois.edu 'docker load'
-docker save whisk/invoker | ssh sp26-cs525-1818.cs.illinois.edu 'docker load'
-docker save whisk/invoker | ssh sp26-cs525-1817.cs.illinois.edu 'docker load'
+docker save whisk/invoker | ssh sp26-cs525-1806.cs.illinois.edu 'docker load'
+docker save whisk/invoker | ssh sp26-cs525-1807.cs.illinois.edu 'docker load'
+docker save whisk/invoker | ssh sp26-cs525-1808.cs.illinois.edu 'docker load'
 
 # Restarts from scratch, maybe make these steps optional?
 cd ansible
