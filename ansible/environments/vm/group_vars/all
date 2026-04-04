@@ -58,9 +58,9 @@ limit_action_concurrency_max: 500
 namespace_default_limit_action_concurrency_max: 500
 
 # Arbitrary rate limits since we are benchmarking
-limit_invocations_per_minute: 999
-limit_invocations_concurrent: 999
-limit_fires_per_minute: 999
+limit_invocations_per_minute: 10000
+limit_invocations_concurrent: 10000
+limit_fires_per_minute: 10000
 
 # Metrics: Ansible sets METRICS_* on containers; these override application.conf (see whisk.metrics in application.conf)
 metrics_kamon: true
