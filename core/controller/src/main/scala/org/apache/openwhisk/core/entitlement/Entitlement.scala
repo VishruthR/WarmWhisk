@@ -32,7 +32,7 @@ import org.apache.openwhisk.core.WhiskConfig
 import org.apache.openwhisk.core.connector.{EventMessage, Metric}
 import org.apache.openwhisk.core.controller.RejectRequest
 import org.apache.openwhisk.core.entity._
-import org.apache.openwhisk.core.loadBalancer.{LoadBalancer, ShardingContainerPoolBalancer}
+import org.apache.openwhisk.core.loadBalancer.{LoadBalancer, RoundRobinPoolBalancer, ShardingContainerPoolBalancer}
 import org.apache.openwhisk.http.ErrorResponse
 import org.apache.openwhisk.http.Messages
 import org.apache.openwhisk.core.connector.MessagingProvider
@@ -142,8 +142,8 @@ protected[core] abstract class EntitlementProvider(
       calculateIndividualLimit(config.triggerFirePerMinuteLimit.toInt, _.limits.firesPerMinute))
 
   private val activationThrottleCalculator = loadBalancer match {
-    // This loadbalancer applies sharding and does not share any state
-    case _: ShardingContainerPoolBalancer => calculateIndividualLimit _
+    // These balancers partition work per controller instance (no shared activation state across controllers)
+    case _: ShardingContainerPoolBalancer | _: RoundRobinPoolBalancer => calculateIndividualLimit _
     // Activation relevant data is shared by all other loadbalancers
     case _ => calculateLimit _
   }
