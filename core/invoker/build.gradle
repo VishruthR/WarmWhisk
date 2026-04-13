@@ -53,6 +53,9 @@ dependencies {
         exclude group: 'log4j'
         exclude group: 'jline'
     }
+
+    implementation "com.dylibso.chicory:runtime:${gradle.chicory.version}"
+    implementation "com.dylibso.chicory:wasi:${gradle.chicory.version}"
 }
 
 mainClassName = "org.apache.openwhisk.core.invoker.Invoker"

@@ -19,7 +19,6 @@ package org.apache.openwhisk.core.invoker
 
 import java.nio.charset.StandardCharsets
 import java.time.Instant
-import java.util.concurrent.TimeUnit
 
 import org.apache.pekko.actor.{ActorRef, ActorSystem, Props}
 import org.apache.pekko.event.Logging.InfoLevel
@@ -40,9 +39,16 @@ import pureconfig.generic.auto._
 import spray.json._
 import spray.json.DefaultJsonProtocol._
 
+import scala.collection.JavaConverters._
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
+
+import com.dylibso.chicory.runtime.Store
+import com.dylibso.chicory.wasm.Parser
+import com.dylibso.chicory.wasi.{WasiOptions, WasiPreview1}
+
+import java.io.{ByteArrayOutputStream, File}
 
 object InvokerWASM extends InvokerProvider {
   override def instance(
@@ -150,38 +156,58 @@ class InvokerWASM(
           val tmp = java.io.File.createTempFile("wasm-action-", ".wasm")
           val workDir = java.nio.file.Files.createTempDirectory("wasm-work-").toFile
           try {
+            val t0 = System.nanoTime()
             val fos = new java.io.FileOutputStream(tmp)
             try fos.write(bytes) finally fos.close()
+            val fileWriteMs = (System.nanoTime() - t0) / 1e6
+            logging.info(this, s"[wasm-timing] wrote ${bytes.length} bytes to ${tmp.getAbsolutePath} in ${fileWriteMs}ms")
 
             val started = Instant.now
-            val command = Seq(wasmtimeBinary, "--dir", ".", tmp.getAbsolutePath) ++ args
-            logging.info(this, s"executing: ${command.mkString(" ")}")
-            val processBuilder = new ProcessBuilder(command: _*)
-            processBuilder.directory(workDir)
-            processBuilder.redirectErrorStream(true)
-            val process = processBuilder.start()
-            process.getOutputStream.close()
 
-            val output = scala.io.Source.fromInputStream(process.getInputStream, StandardCharsets.UTF_8.name()).mkString
-            val finished = process.waitFor(wasmtimeInvokeTimeout.toMillis, TimeUnit.MILLISECONDS)
-            val response =
-              if (!finished) {
-                process.destroyForcibly()
-                ActivationResponse.whiskError(s"wasmtime timed out after ${wasmtimeInvokeTimeout.toSeconds} seconds")
-              } else {
-                val exit = process.exitValue()
-                if (exit == 0) {
-                  val json = Try(output.parseJson).getOrElse(JsObject("result" -> JsString(output.trim)))
-                  json match {
-                    case JsObject(fields) if fields.contains(ActivationResponse.ERROR_FIELD) =>
-                      ActivationResponse.applicationError(fields(ActivationResponse.ERROR_FIELD))
-                    case _ =>
-                      ActivationResponse.success(Some(json))
-                  }
-                } else {
-                  ActivationResponse.developerError(s"wasmtime exited with code $exit: ${output.trim}")
+            val t1 = System.nanoTime()
+            val module = Parser.parse(new File(tmp.getAbsolutePath))
+            val stdout = new ByteArrayOutputStream()
+            val stderr = new ByteArrayOutputStream()
+            val argv = (tmp.getName :: args.toList).asJava
+            val wasiOpts = WasiOptions.builder()
+              .withStdout(stdout)
+              .withStderr(stderr)
+              .withArguments(argv)
+              .build()
+            val wasi = WasiPreview1.builder().withOptions(wasiOpts).build()
+            val store = new Store().addFunction(wasi.toHostFunctions: _*)
+            val wasiSetupMs = (System.nanoTime() - t1) / 1e6
+            logging.info(this, s"[wasm-timing] parsed module + built WASI executor in ${wasiSetupMs}ms")
+
+            val response = {
+              try {
+                val t2 = System.nanoTime()
+                store.instantiate("openwhisk-wasm", module)
+                val execMs = (System.nanoTime() - t2) / 1e6
+                logging.info(this, s"[wasm-timing] WASM execution completed in ${execMs}ms")
+
+                val output = stdout.toString(StandardCharsets.UTF_8.name())
+                val errText = stderr.toString(StandardCharsets.UTF_8.name()).trim
+                if (errText.nonEmpty) {
+                  logging.info(this, s"wasm stderr: $errText")
                 }
+                val json = Try(output.parseJson).getOrElse(JsObject("result" -> JsString(output.trim)))
+                json match {
+                  case JsObject(fields) if fields.contains(ActivationResponse.ERROR_FIELD) =>
+                    ActivationResponse.applicationError(fields(ActivationResponse.ERROR_FIELD))
+                  case _ =>
+                    ActivationResponse.success(Some(json))
+                }
+              } catch {
+                case t: Throwable =>
+                  ActivationResponse.developerError(t.getMessage)
+              } finally {
+                wasi.close()
               }
+            }
+
+            val totalMs = (System.nanoTime() - t0) / 1e6
+            logging.info(this, s"[wasm-timing] total executeWithWasmtime: ${totalMs}ms (file=${fileWriteMs}ms, setup=${wasiSetupMs}ms)")
 
             (response, started, Instant.now)
           } finally {
