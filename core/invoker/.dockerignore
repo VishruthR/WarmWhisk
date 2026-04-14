@@ -2,3 +2,4 @@
 !init.sh
 !build/distributions
 !build/tmp/docker-coverage
+!wasmtime-config.toml

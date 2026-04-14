@@ -47,6 +47,7 @@ RUN apt-get update && apt-get install -y xz-utils && apt-get clean && rm -rf /va
 ADD build/distributions/invoker.tar ./
 
 COPY init.sh /
+COPY wasmtime-config.toml /etc/wasmtime/config.toml
 RUN chmod +x init.sh
 
 # When running the invoker as a non-root user this has implications on the standard directory where runc stores its data.

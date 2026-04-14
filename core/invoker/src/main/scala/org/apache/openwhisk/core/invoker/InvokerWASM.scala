@@ -158,7 +158,7 @@ class InvokerWASM(
 
             val started = Instant.now
             val t1 = System.nanoTime()
-            val command = Seq(wasmtimeBinary, "--dir", ".", tmp.getAbsolutePath) ++ args
+            val command = Seq(wasmtimeBinary, "run", "-C", "cache-config=/etc/wasmtime/config.toml", "-C", "cache=y", "--dir", ".", tmp.getAbsolutePath) ++ args
             logging.info(this, s"executing: ${command.mkString(" ")}")
             val processBuilder = new ProcessBuilder(command: _*)
             processBuilder.directory(workDir)
