@@ -79,7 +79,8 @@ class InvokerWASM(
 
   private val namespaceBlacklist = new NamespaceBlacklist(authStore)
 
-  private val backgroundCompiler = new BackgroundCompiler(Paths.get("."))
+  private val currentPath = java.nio.file.Paths.get(".").toAbsolutePath.normalize.toString
+  private val backgroundCompiler = new BackgroundCompiler(Paths.get(currentPath))
 
   Scheduler.scheduleWaitAtMost(loadConfigOrThrow[NamespaceBlacklistConfig](ConfigKeys.blacklist).pollInterval) { () =>
     logging.debug(this, "running background job to update blacklist")
@@ -143,11 +144,11 @@ class InvokerWASM(
       .map(p => argToString(p._2))
 
     val actionName = executable.fullyQualifiedName(false).asString.replace('/', '_')
-    val actionPath = Paths.get(s"${actionName}.wasm")
+    val actionPath = Paths.get(currentPath).resolve(s"${actionName}.wasm")
 
-    logging.info(this, s"msg.content: ${msg.content.getOrElse(JsObject.empty).compactPrint}")
-    logging.info(this, s"parameters: ${executable.parameters.toJsObject.compactPrint}")
-    logging.info(this, s"args: ${args.mkString(" ")}")
+    // logging.info(this, s"msg.content: ${msg.content.getOrElse(JsObject.empty).compactPrint}")
+    // logging.info(this, s"parameters: ${executable.parameters.toJsObject.compactPrint}")
+    // logging.info(this, s"args: ${args.mkString(" ")}")
 
     executable.exec match {
       case CodeExecAsAttachment(_, Attachments.Inline(code), _, binary) if binary =>
@@ -291,6 +292,7 @@ class InvokerWASM(
     if (actionid.rev == DocRevision.empty) logging.warn(this, s"revision was not provided for ${actionid.id}")
 
     WhiskAction
+      // TODO: Edit here to ensure we don't fetch action if it's already cached locally
       .get(entityStore, actionid.id, actionid.rev, fromCache = actionid.rev != DocRevision.empty)
       .flatMap(action => {
         // action that exceed the limit cannot be executed.
