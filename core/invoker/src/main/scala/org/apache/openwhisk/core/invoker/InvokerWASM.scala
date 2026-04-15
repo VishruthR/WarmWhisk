@@ -43,6 +43,7 @@ import spray.json.DefaultJsonProtocol._
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
+import java.nio.file.Paths
 
 object InvokerWASM extends InvokerProvider {
   override def instance(
@@ -77,6 +78,8 @@ class InvokerWASM(
   private val authStore = WhiskAuthStore.datastore()
 
   private val namespaceBlacklist = new NamespaceBlacklist(authStore)
+
+  private val backgroundCompiler = new BackgroundCompiler(Paths.get("."))
 
   Scheduler.scheduleWaitAtMost(loadConfigOrThrow[NamespaceBlacklistConfig](ConfigKeys.blacklist).pollInterval) { () =>
     logging.debug(this, "running background job to update blacklist")
@@ -139,6 +142,9 @@ class InvokerWASM(
       .sortBy(_._1)
       .map(p => argToString(p._2))
 
+    val actionName = executable.fullyQualifiedName(false).asString.replace('/', '_')
+    val actionPath = Paths.get(s"${actionName}.wasm")
+
     logging.info(this, s"msg.content: ${msg.content.getOrElse(JsObject.empty).compactPrint}")
     logging.info(this, s"parameters: ${executable.parameters.toJsObject.compactPrint}")
     logging.info(this, s"args: ${args.mkString(" ")}")
@@ -147,18 +153,37 @@ class InvokerWASM(
       case CodeExecAsAttachment(_, Attachments.Inline(code), _, binary) if binary =>
         Future {
           val t0 = System.nanoTime()
-          val bytes = java.util.Base64.getDecoder.decode(code)
-          val tmp = java.io.File.createTempFile("wasm-action-", ".wasm")
+          val (actionFile, compiled) = {
+            if (backgroundCompiler.isCompiled(actionPath)) {
+              (backgroundCompiler.compiledPath(actionPath), true)
+            } else {
+              val bytes = java.util.Base64.getDecoder.decode(code)
+              // If two writes happen concurrently to the same file, there could be a race condition.
+              // Instead, we write to a temp file then attempt an atomic move operation
+              if (!java.nio.file.Files.exists(actionPath)) {
+                val tmp = java.nio.file.Files.createTempFile(actionPath.getParent, "wasm-", ".tmp")
+                java.nio.file.Files.write(tmp, bytes)
+                try java.nio.file.Files.move(tmp, actionPath, java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+                catch { case _: java.nio.file.FileAlreadyExistsException => java.nio.file.Files.deleteIfExists(tmp) }
+              }
+              val fileWriteMs = (System.nanoTime() - t0) / 1e6
+              logging.info(this, s"[wasm-timing] base64 decode + file write (${bytes.length} bytes) in ${fileWriteMs}ms")
+
+              backgroundCompiler.submit(actionPath)
+              (actionPath, false)
+            }
+          }
+     
+          // Create independent work directory for each invocation to avoid overlap
           val workDir = java.nio.file.Files.createTempDirectory("wasm-work-").toFile
           try {
-            val fos = new java.io.FileOutputStream(tmp)
-            try fos.write(bytes) finally fos.close()
-            val fileWriteMs = (System.nanoTime() - t0) / 1e6
-            logging.info(this, s"[wasm-timing] base64 decode + file write (${bytes.length} bytes) in ${fileWriteMs}ms")
-
             val started = Instant.now
             val t1 = System.nanoTime()
-            val command = Seq(wasmtimeBinary, "run", "-C", "cache-config=/etc/wasmtime/config.toml", "-C", "cache=y", "--dir", ".", tmp.getAbsolutePath) ++ args
+            val command = if (compiled) {
+              Seq(wasmtimeBinary, "--allow-precompiled", "--dir", ".", actionFile.toString) ++ args
+            } else {
+              Seq(wasmtimeBinary, "--dir", ".", actionFile.toString) ++ args
+            }
             logging.info(this, s"executing: ${command.mkString(" ")}")
             val processBuilder = new ProcessBuilder(command: _*)
             processBuilder.directory(workDir)
@@ -200,11 +225,10 @@ class InvokerWASM(
             val end = Instant.now
             val activationMs = java.time.Duration.between(started, end).toMillis
             val totalMs = (System.nanoTime() - t0) / 1e6
-            logging.info(this, s"[wasm-timing] total=${totalMs}ms (file=${fileWriteMs}ms, fork=${forkMs}ms, readStdout=${readOutputMs}ms, wait=${waitMs}ms, activation=${activationMs}ms)")
+            logging.info(this, s"[wasm-timing] total=${totalMs}ms (fork=${forkMs}ms, readStdout=${readOutputMs}ms, wait=${waitMs}ms, activation=${activationMs}ms)")
 
             (response, started, end)
           } finally {
-            tmp.delete()
             deleteRecursively(workDir)
           }
         }
