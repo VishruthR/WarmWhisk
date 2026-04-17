@@ -31,7 +31,7 @@ You can navigate CouchDB using cURL commands, the web UI at (`http://127.0.0.1:5
 curl -s http://whisk_admin:some_passw0rd@127.0.0.1:5984/whisk_local_activations/_all_docs
 
 # Fetch a specific activation
-curl -s -X POST -H "Content-Type: application/json"   -d '{"selector": {"activationId": "44315a56334d4d0ab15a56334d4d0aea"}}'   http://whisk_admin:some_passw0rd@127.0.0.1:5984/whisk_local_activations/_find | jq .
+curl -s -X POST -H "Content-Type: application/json"   -d '{"selector": {"activationId": "51c1309863d044a981309863d0b4a9df"}}'   http://whisk_admin:some_passw0rd@127.0.0.1:5984/whisk_local_activations/_find | jq .
 ```
 
 ### Using with WASM

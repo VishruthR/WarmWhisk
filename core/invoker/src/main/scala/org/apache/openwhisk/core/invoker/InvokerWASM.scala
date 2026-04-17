@@ -23,12 +23,14 @@ import java.util.concurrent.TimeUnit
 
 import org.apache.pekko.actor.{ActorRef, ActorSystem, Props}
 import org.apache.pekko.event.Logging.InfoLevel
+import org.apache.pekko.http.scaladsl.Http
+import org.apache.pekko.http.scaladsl.model.{ContentTypes, HttpEntity, HttpMethods, HttpRequest}
 import org.apache.openwhisk.common._
 import org.apache.openwhisk.common.tracing.WhiskTracerProvider
 import org.apache.openwhisk.core.ack.{MessagingActiveAck, UserEventSender}
 import org.apache.openwhisk.core.connector._
 import org.apache.openwhisk.core.containerpool._
-import org.apache.openwhisk.core.containerpool.v2.{NotSupportedPoolState, TotalContainerPoolState}
+import org.apache.openwhisk.core.containerpool.v2.{InvokerHealthManager, NotSupportedPoolState, TotalContainerPoolState}
 import org.apache.openwhisk.core.database._
 import org.apache.openwhisk.core.entity._
 import org.apache.openwhisk.core.invoker.Invoker.InvokerEnabled
@@ -67,7 +69,6 @@ class InvokerWASM(
   implicit val ec: ExecutionContext = actorSystem.dispatcher
   implicit val cfg: WhiskConfig = config
 
-  private val wasmtimeBinary = "wasmtime"
   private val wasmtimeInvokeTimeout = 60.seconds
 
   /** Initialize needed databases */
@@ -80,7 +81,7 @@ class InvokerWASM(
   private val namespaceBlacklist = new NamespaceBlacklist(authStore)
 
   private val currentPath = java.nio.file.Paths.get(".").toAbsolutePath.normalize.toString
-  private val backgroundCompiler = new BackgroundCompiler(Paths.get(currentPath))
+  private val serveManager = new WasmtimeServeManager(Paths.get(currentPath))
 
   Scheduler.scheduleWaitAtMost(loadConfigOrThrow[NamespaceBlacklistConfig](ConfigKeys.blacklist).pollInterval) { () =>
     logging.debug(this, "running background job to update blacklist")
@@ -117,10 +118,34 @@ class InvokerWASM(
     activationStore.storeAfterCheck(activation, isBlocking, None, None, context)(tid, notifier = None, logging)
   }
 
-  private def deleteRecursively(file: java.io.File): Unit = {
-    if (file.isDirectory) file.listFiles().foreach(deleteRecursively)
-    file.delete()
+  /**
+   * Ensures the .wasm artifact for this action is materialized on disk, returning its path.
+   * Uses an atomic-move pattern so concurrent writers don't corrupt the file.
+   */
+  private def materializeWasm(actionName: String, code: String): java.nio.file.Path = {
+    val actionPath = Paths.get(currentPath).resolve(s"${actionName}.wasm")
+    if (!java.nio.file.Files.exists(actionPath)) {
+      val t0 = System.nanoTime()
+      val bytes = java.util.Base64.getDecoder.decode(code)
+      val tmp = java.nio.file.Files.createTempFile(actionPath.getParent, "wasm-", ".tmp")
+      java.nio.file.Files.write(tmp, bytes)
+      try java.nio.file.Files.move(tmp, actionPath, java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+      catch { case _: java.nio.file.FileAlreadyExistsException => java.nio.file.Files.deleteIfExists(tmp) }
+      val writeMs = (System.nanoTime() - t0) / 1e6
+      logging.info(this, s"[wasm-timing] base64 decode + file write (${bytes.length} bytes) in ${writeMs}ms")
+    }
+    actionPath
   }
+
+  // The invoker health probe uses a plain core-module `.wasm` (not a wasi:http/proxy
+  // component), which `wasmtime serve` cannot run. Route it through the legacy
+  // fork+exec `wasmtime run` path instead. Identified by the action name prefix
+  // (e.g. "invokerHealthTestAction" or "invokerHealthTestActionWASM") from
+  // `whisk.loadbalancer.invoker-health-test-action.name` in application.conf.
+  private val healthActionNamePrefix: String = InvokerHealthManager.healthActionNamePrefix
+
+  private def isHealthAction(executable: ExecutableWhiskAction): Boolean =
+    executable.name.asString.startsWith(healthActionNamePrefix)
 
   private def argToString(v: JsValue): String = v match {
     case JsString(s)  => s
@@ -130,108 +155,29 @@ class InvokerWASM(
     case other        => other.compactPrint
   }
 
+  private def deleteRecursively(file: java.io.File): Unit = {
+    if (file.isDirectory) file.listFiles().foreach(deleteRecursively)
+    file.delete()
+  }
+
   private def executeWithWasmtime(msg: ActivationMessage,
                                   executable: ExecutableWhiskAction): Future[(ActivationResponse, Instant, Instant)] = {
-    // TODO: Here we require parameters to be accepted in alphabetical order, not so great
-    // msg.content are the parameters passed to the action by the user at call time
-    // executable.parameters are the default parameters bound to an action are creation time, they are a fallback
+    // msg.content are the parameters passed to the action by the user at call time;
+    // executable.parameters are the default parameters bound at action creation time.
     val params: JsObject = msg.content match {
       case Some(obj: JsObject) if obj.fields.nonEmpty => obj
-      case _ => executable.parameters.toJsObject
+      case _                                          => executable.parameters.toJsObject
     }
-    val args = params.fields.toSeq
-      .sortBy(_._1)
-      .map(p => argToString(p._2))
 
     val actionName = executable.fullyQualifiedName(false).asString.replace('/', '_')
-    val actionPath = Paths.get(currentPath).resolve(s"${actionName}.wasm")
-
-    // logging.info(this, s"msg.content: ${msg.content.getOrElse(JsObject.empty).compactPrint}")
-    // logging.info(this, s"parameters: ${executable.parameters.toJsObject.compactPrint}")
-    // logging.info(this, s"args: ${args.mkString(" ")}")
 
     executable.exec match {
       case CodeExecAsAttachment(_, Attachments.Inline(code), _, binary) if binary =>
-        Future {
-          val t0 = System.nanoTime()
-          val (actionFile, compiled) = {
-            if (backgroundCompiler.isCompiled(actionPath)) {
-              (backgroundCompiler.compiledPath(actionPath), true)
-            } else {
-              val bytes = java.util.Base64.getDecoder.decode(code)
-              // If two writes happen concurrently to the same file, there could be a race condition.
-              // Instead, we write to a temp file then attempt an atomic move operation
-              if (!java.nio.file.Files.exists(actionPath)) {
-                val tmp = java.nio.file.Files.createTempFile(actionPath.getParent, "wasm-", ".tmp")
-                java.nio.file.Files.write(tmp, bytes)
-                try java.nio.file.Files.move(tmp, actionPath, java.nio.file.StandardCopyOption.ATOMIC_MOVE)
-                catch { case _: java.nio.file.FileAlreadyExistsException => java.nio.file.Files.deleteIfExists(tmp) }
-              }
-              val fileWriteMs = (System.nanoTime() - t0) / 1e6
-              logging.info(this, s"[wasm-timing] base64 decode + file write (${bytes.length} bytes) in ${fileWriteMs}ms")
-
-              backgroundCompiler.submit(actionPath)
-              (actionPath, false)
-            }
-          }
-     
-          // Create independent work directory for each invocation to avoid overlap
-          val workDir = java.nio.file.Files.createTempDirectory("wasm-work-").toFile
-          try {
-            val started = Instant.now
-            val t1 = System.nanoTime()
-            val command = if (compiled) {
-              Seq(wasmtimeBinary, "--allow-precompiled", "--dir", ".", actionFile.toString) ++ args
-            } else {
-              Seq(wasmtimeBinary, "--dir", ".", actionFile.toString) ++ args
-            }
-            logging.info(this, s"executing: ${command.mkString(" ")}")
-            val processBuilder = new ProcessBuilder(command: _*)
-            processBuilder.directory(workDir)
-            processBuilder.redirectErrorStream(true)
-            val process = processBuilder.start()
-            process.getOutputStream.close()
-            val forkMs = (System.nanoTime() - t1) / 1e6
-            logging.info(this, s"[wasm-timing] fork + exec wasmtime in ${forkMs}ms")
-
-            val t2 = System.nanoTime()
-            val output = scala.io.Source.fromInputStream(process.getInputStream, StandardCharsets.UTF_8.name()).mkString
-            val readOutputMs = (System.nanoTime() - t2) / 1e6
-            logging.info(this, s"[wasm-timing] read stdout (${output.length} chars) in ${readOutputMs}ms")
-
-            val t3 = System.nanoTime()
-            val finished = process.waitFor(wasmtimeInvokeTimeout.toMillis, TimeUnit.MILLISECONDS)
-            val waitMs = (System.nanoTime() - t3) / 1e6
-            logging.info(this, s"[wasm-timing] waitFor completed in ${waitMs}ms (finished=$finished)")
-
-            val response =
-              if (!finished) {
-                process.destroyForcibly()
-                ActivationResponse.whiskError(s"wasmtime timed out after ${wasmtimeInvokeTimeout.toSeconds} seconds")
-              } else {
-                val exit = process.exitValue()
-                if (exit == 0) {
-                  val json = Try(output.parseJson).getOrElse(JsObject("result" -> JsString(output.trim)))
-                  json match {
-                    case JsObject(fields) if fields.contains(ActivationResponse.ERROR_FIELD) =>
-                      ActivationResponse.applicationError(fields(ActivationResponse.ERROR_FIELD))
-                    case _ =>
-                      ActivationResponse.success(Some(json))
-                  }
-                } else {
-                  ActivationResponse.developerError(s"wasmtime exited with code $exit: ${output.trim}")
-                }
-              }
-
-            val end = Instant.now
-            val activationMs = java.time.Duration.between(started, end).toMillis
-            val totalMs = (System.nanoTime() - t0) / 1e6
-            logging.info(this, s"[wasm-timing] total=${totalMs}ms (fork=${forkMs}ms, readStdout=${readOutputMs}ms, wait=${waitMs}ms, activation=${activationMs}ms)")
-
-            (response, started, end)
-          } finally {
-            deleteRecursively(workDir)
-          }
+        val actionPath = materializeWasm(actionName, code)
+        if (isHealthAction(executable)) {
+          executeWithWasmtimeRun(actionName, actionPath, params)
+        } else {
+          executeWithWasmtimeServe(actionName, actionPath, params)
         }
 
       case _ =>
@@ -239,6 +185,139 @@ class InvokerWASM(
           s"action ${executable.fullyQualifiedName(false)} is not a valid WASM binary")
         val now = Instant.now
         Future.successful((response, now, now))
+    }
+  }
+
+  private def executeWithWasmtimeServe(actionName: String,
+                                       actionPath: java.nio.file.Path,
+                                       params: JsObject): Future[(ActivationResponse, Instant, Instant)] = {
+    val t0 = System.nanoTime()
+    val started = Instant.now
+
+    val tStart = System.nanoTime()
+    serveManager.getOrStart(actionName, actionPath).flatMap { handle =>
+      val startupMs = (System.nanoTime() - tStart) / 1e6
+      logging.info(
+        this,
+        s"[wasm-timing] serve-ready action=$actionName port=${handle.port} startup-or-reuse=${startupMs}ms")
+
+      val tReq = System.nanoTime()
+      val body = params.compactPrint
+      val request = HttpRequest(
+        method = HttpMethods.POST,
+        uri = s"${handle.baseUrl}/",
+        entity = HttpEntity(ContentTypes.`application/json`, body.getBytes(StandardCharsets.UTF_8)))
+
+      Http().singleRequest(request).flatMap { resp =>
+        resp.entity.toStrict(wasmtimeInvokeTimeout).map { strict =>
+          val text = strict.data.utf8String
+          val reqMs = (System.nanoTime() - tReq) / 1e6
+          logging.info(
+            this,
+            s"[wasm-timing] http-request action=$actionName port=${handle.port} status=${resp.status.intValue} bytes=${text.length} in ${reqMs}ms")
+
+          val response =
+            if (resp.status.isSuccess()) {
+              val json = Try(text.parseJson).getOrElse(JsObject("result" -> JsString(text.trim)))
+              json match {
+                case JsObject(fields) if fields.contains(ActivationResponse.ERROR_FIELD) =>
+                  ActivationResponse.applicationError(fields(ActivationResponse.ERROR_FIELD))
+                case _ =>
+                  ActivationResponse.success(Some(json))
+              }
+            } else {
+              ActivationResponse.developerError(
+                s"wasmtime serve returned ${resp.status.intValue}: ${text.trim}")
+            }
+
+          val end = Instant.now
+          val activationMs = java.time.Duration.between(started, end).toMillis
+          val totalMs = (System.nanoTime() - t0) / 1e6
+          logging.info(
+            this,
+            s"[wasm-timing] total=${totalMs}ms (startup-or-reuse=${startupMs}ms, httpRequest=${reqMs}ms, activation=${activationMs}ms)")
+          (response, started, end)
+        }
+      }
+    }.recover {
+      case t: Throwable =>
+        val end = Instant.now
+        logging.error(
+          this,
+          s"[wasmtime-serve] invocation failed action=$actionName: ${t.getClass.getName}: ${t.getMessage}")
+        (ActivationResponse.whiskError(s"wasmtime serve failure: ${t.getMessage}"), started, end)
+    }
+  }
+
+  /**
+   * Legacy `wasmtime run` fork+exec flow, used for the invoker health-check action
+   * (which is a plain core-module .wasm, not a wasi:http/proxy component, so
+   * `wasmtime serve` can't run it).
+   */
+  private def executeWithWasmtimeRun(actionName: String,
+                                     actionPath: java.nio.file.Path,
+                                     params: JsObject): Future[(ActivationResponse, Instant, Instant)] = {
+    // Sort params alphabetically and pass as positional CLI args (matches the
+    // contract the old InvokerWASM used before wasmtime serve was introduced).
+    val args = params.fields.toSeq.sortBy(_._1).map(p => argToString(p._2))
+
+    Future {
+      val t0 = System.nanoTime()
+      val workDir = java.nio.file.Files.createTempDirectory("wasm-work-").toFile
+      try {
+        val started = Instant.now
+        val t1 = System.nanoTime()
+        val command = Seq("wasmtime", "--dir", ".", actionPath.toString) ++ args
+        logging.info(this, s"[wasm-run] executing action=$actionName cmd=${command.mkString(" ")}")
+
+        val pb = new ProcessBuilder(command: _*)
+        pb.directory(workDir)
+        pb.redirectErrorStream(true)
+        val process = pb.start()
+        process.getOutputStream.close()
+        val forkMs = (System.nanoTime() - t1) / 1e6
+        logging.info(this, s"[wasm-timing] action=$actionName fork+exec wasmtime in ${forkMs}ms")
+
+        val t2 = System.nanoTime()
+        val output = scala.io.Source.fromInputStream(process.getInputStream, StandardCharsets.UTF_8.name()).mkString
+        val readMs = (System.nanoTime() - t2) / 1e6
+        logging.info(this, s"[wasm-timing] action=$actionName read stdout (${output.length} chars) in ${readMs}ms")
+
+        val t3 = System.nanoTime()
+        val finished = process.waitFor(wasmtimeInvokeTimeout.toMillis, TimeUnit.MILLISECONDS)
+        val waitMs = (System.nanoTime() - t3) / 1e6
+        logging.info(this, s"[wasm-timing] action=$actionName waitFor completed in ${waitMs}ms (finished=$finished)")
+
+        val response =
+          if (!finished) {
+            process.destroyForcibly()
+            ActivationResponse.whiskError(s"wasmtime timed out after ${wasmtimeInvokeTimeout.toSeconds} seconds")
+          } else {
+            val exit = process.exitValue()
+            if (exit == 0) {
+              val json = Try(output.parseJson).getOrElse(JsObject("result" -> JsString(output.trim)))
+              json match {
+                case JsObject(fields) if fields.contains(ActivationResponse.ERROR_FIELD) =>
+                  ActivationResponse.applicationError(fields(ActivationResponse.ERROR_FIELD))
+                case _ =>
+                  ActivationResponse.success(Some(json))
+              }
+            } else {
+              ActivationResponse.developerError(s"wasmtime exited with code $exit: ${output.trim}")
+            }
+          }
+
+        val end = Instant.now
+        val activationMs = java.time.Duration.between(started, end).toMillis
+        val totalMs = (System.nanoTime() - t0) / 1e6
+        logging.info(
+          this,
+          s"[wasm-timing] action=$actionName total=${totalMs}ms (fork=${forkMs}ms, readStdout=${readMs}ms, wait=${waitMs}ms, activation=${activationMs}ms)")
+
+        (response, started, end)
+      } finally {
+        deleteRecursively(workDir)
+      }
     }
   }
 
