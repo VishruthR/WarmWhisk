@@ -67,6 +67,7 @@ class QueueManager(
                            DocId,
                            DocRevision,
                            Boolean,
+                           Boolean,
                            Boolean) => Future[WhiskActionMetaData],
   etcdClient: EtcdClient,
   schedulerEndpoints: SchedulerEndpoints,
@@ -346,7 +347,7 @@ class QueueManager(
   private def recoverQueue(msg: ActivationMessage)(implicit transid: TransactionId): Unit = {
     val start = transid.started(this, LoggingMarkers.SCHEDULER_QUEUE_RECOVER)
     logging.info(this, s"Recover a queue for ${msg.action},")
-    getWhiskActionMetaData(entityStore, msg.action.toDocId, msg.revision, false, false)
+    getWhiskActionMetaData(entityStore, msg.action.toDocId, msg.revision, false, false, true)
       .map { actionMetaData: WhiskActionMetaData =>
         actionMetaData.toExecutableWhiskAction match {
           case Some(_) =>
@@ -376,7 +377,7 @@ class QueueManager(
 
     logging.info(this, s"Create a new queue for ${newAction}, rev: ${msg.revision}")
 
-    getWhiskActionMetaData(entityStore, newAction.toDocId, msg.revision, msg.revision != DocRevision.empty, false)
+    getWhiskActionMetaData(entityStore, newAction.toDocId, msg.revision, msg.revision != DocRevision.empty, false, true)
       .map { actionMetaData: WhiskActionMetaData =>
         actionMetaData.toExecutableWhiskAction match {
           // Always use revision got from Database, there can be 2 cases for the actionMetaData.rev
@@ -677,6 +678,7 @@ object QueueManager {
     getWhiskActionMetaData: (ArtifactStore[WhiskEntity],
                              DocId,
                              DocRevision,
+                             Boolean,
                              Boolean,
                              Boolean) => Future[WhiskActionMetaData],
     etcdClient: EtcdClient,

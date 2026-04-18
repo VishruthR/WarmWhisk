@@ -156,7 +156,7 @@ class QueueManagerTests
 
   /**get WhiskActionMetaData*/
   def getWhiskActionMetaData(meta: Future[WhiskActionMetaData]) = LoggedFunction {
-    (_: ArtifactStore[WhiskEntity], _: DocId, _: DocRevision, _: Boolean, _: Boolean) =>
+    (_: ArtifactStore[WhiskEntity], _: DocId, _: DocRevision, _: Boolean, _: Boolean, _: Boolean) =>
       meta
   }
 

@@ -118,13 +118,26 @@ class InvokerWASM(
     activationStore.storeAfterCheck(activation, isBlocking, None, None, context)(tid, notifier = None, logging)
   }
 
+  private def getActionFilename(actionFullyQualifiedName: String): String = {
+    return actionFullyQualifiedName.replace('/', '_')
+  }
+
+  private def getActionPath(actionName: String): java.nio.file.Path = {
+    Paths.get(currentPath).resolve(s"actions/${actionName}.wasm")
+  }
+
+  private def isBinaryPresent(actionName: String): Boolean = {
+    val actionPath = getActionPath(actionName)
+    java.nio.file.Files.exists(actionPath)
+  }
+
   /**
    * Ensures the .wasm artifact for this action is materialized on disk, returning its path.
    * Uses an atomic-move pattern so concurrent writers don't corrupt the file.
    */
   private def materializeWasm(actionName: String, code: String): java.nio.file.Path = {
-    val actionPath = Paths.get(currentPath).resolve(s"${actionName}.wasm")
-    if (!java.nio.file.Files.exists(actionPath)) {
+    val actionPath = getActionPath(actionName)
+    if (!isBinaryPresent(actionName)) {
       val t0 = System.nanoTime()
       val bytes = java.util.Base64.getDecoder.decode(code)
       val tmp = java.nio.file.Files.createTempFile(actionPath.getParent, "wasm-", ".tmp")
@@ -144,8 +157,8 @@ class InvokerWASM(
   // `whisk.loadbalancer.invoker-health-test-action.name` in application.conf.
   private val healthActionNamePrefix: String = InvokerHealthManager.healthActionNamePrefix
 
-  private def isHealthAction(executable: ExecutableWhiskAction): Boolean =
-    executable.name.asString.startsWith(healthActionNamePrefix)
+  private def isHealthAction(actionName: String): Boolean =
+    actionName.startsWith(healthActionNamePrefix)
 
   private def argToString(v: JsValue): String = v match {
     case JsString(s)  => s
@@ -169,16 +182,24 @@ class InvokerWASM(
       case _                                          => executable.parameters.toJsObject
     }
 
-    val actionName = executable.fullyQualifiedName(false).asString.replace('/', '_')
+    val actionFileName = getActionFilename(executable.fullyQualifiedName(false).asString)
+
+    def runWasm(actionPath: java.nio.file.Path): Future[(ActivationResponse, Instant, Instant)] = {
+      if (isHealthAction(executable.name.asString)) {
+        executeWithWasmtimeRun(actionFileName, actionPath, params)
+      } else {
+        executeWithWasmtimeServe(actionFileName, actionPath, params)
+      }
+    }
 
     executable.exec match {
+      // Attachment was not fetched because the .wasm is already cached on disk.
+      // Skip the inline-code path and run directly from the cached artifact.
+      case CodeExecAsAttachment(_, _, _, binary) if binary && isBinaryPresent(actionFileName) =>
+        runWasm(getActionPath(actionFileName))
+
       case CodeExecAsAttachment(_, Attachments.Inline(code), _, binary) if binary =>
-        val actionPath = materializeWasm(actionName, code)
-        if (isHealthAction(executable)) {
-          executeWithWasmtimeRun(actionName, actionPath, params)
-        } else {
-          executeWithWasmtimeServe(actionName, actionPath, params)
-        }
+        runWasm(materializeWasm(actionFileName, code))
 
       case _ =>
         val response = ActivationResponse.whiskError(
@@ -370,9 +391,9 @@ class InvokerWASM(
     // if the doc revision is missing, then bypass cache
     if (actionid.rev == DocRevision.empty) logging.warn(this, s"revision was not provided for ${actionid.id}")
 
+    val actionFilename = getActionFilename(FullyQualifiedEntityName(namespace, name).asString)
     WhiskAction
-      // TODO: Edit here to ensure we don't fetch action if it's already cached locally
-      .get(entityStore, actionid.id, actionid.rev, fromCache = actionid.rev != DocRevision.empty)
+      .get(entityStore, actionid.id, actionid.rev, fromCache = actionid.rev != DocRevision.empty, fetchAttachment = !isBinaryPresent(actionFilename))
       .flatMap(action => {
         // action that exceed the limit cannot be executed.
         action.limits.checkLimits(msg.user)

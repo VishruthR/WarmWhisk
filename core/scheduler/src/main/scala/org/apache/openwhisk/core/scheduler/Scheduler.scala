@@ -21,9 +21,9 @@ import org.apache.pekko.Done
 import org.apache.pekko.actor.{ActorRef, ActorRefFactory, ActorSelection, ActorSystem, CoordinatedShutdown, Props}
 import org.apache.pekko.http.scaladsl.Http
 import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse}
+import org.apache.pekko.pattern.ask
 import org.apache.pekko.management.scaladsl.PekkoManagement
 import org.apache.pekko.management.cluster.bootstrap.ClusterBootstrap
-import org.apache.pekko.pattern.ask
 import org.apache.pekko.util.Timeout
 import com.typesafe.config.ConfigValueFactory
 import io.altoo.serialization.kryo.pekko.DefaultKryoInitializer
