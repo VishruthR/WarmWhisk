@@ -96,9 +96,13 @@ class InvokerWASM(
   private val maximumContainers = (poolConfig.userMemory / MemoryLimit.MIN_MEMORY).toInt
   private val msgProvider = SpiLoader.get[MessagingProvider]
 
-  //number of peeked messages - increasing the concurrentPeekFactor improves concurrent usage, but adds risk for message loss in case of crash
+  // WASM actions use far less memory than Docker containers, so we scale maxPeek
+  // by the ratio of MIN_MEMORY to actual WASM memory usage (~10MB), allowing many
+  // more concurrent activations to be peeked from Kafka and processed in parallel.
+  private val wasmMemoryScaleFactor = (MemoryLimit.MIN_MEMORY.toMB / 10).toInt
+  private val wasmMaxContainers = maximumContainers * wasmMemoryScaleFactor
   private val maxPeek =
-    math.max(maximumContainers, (maximumContainers * limitsConfig.max * poolConfig.concurrentPeekFactor).toInt)
+    math.max(wasmMaxContainers, (wasmMaxContainers * limitsConfig.max * poolConfig.concurrentPeekFactor).toInt)
 
   private val consumer =
     msgProvider.getConsumer(config, topic, topic, maxPeek, maxPollInterval = TimeLimit.MAX_DURATION + 1.minute)

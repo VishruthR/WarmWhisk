@@ -123,7 +123,7 @@ class ContainerPool(childFactory: ActorRefFactory => ActorRef,
       // Check if the message is resent from the buffer. Only the first message on the buffer can be resent.
       val isResentFromBuffer = runBuffer.nonEmpty && runBuffer.dequeueOption.exists(_._1.msg == r.msg)
 
-      // Only process request, if there are no other requests waiting for free slots, or if the current request is the
+      // Only process request, iff there are no other requests waiting for free slots, or if the current request is the
       // next request to process
       // It is guaranteed, that only the first message on the buffer is resent.
       if (runBuffer.isEmpty || isResentFromBuffer) {

@@ -74,7 +74,7 @@ whisk:
 #
 
 manifestfile: "{{ manifest_file | default('/ansible/files/runtimes.json') }}"
-runtimesManifest: "{{ runtimes_manifest | default(lookup('file', openwhisk_home ~ '{{ manifestfile }}') | from_json) }}"
+runtimesManifest: "{{ runtimes_manifest | default(lookup('file', openwhisk_home ~ manifestfile) | from_json) }}"
 
 limits:
   invocationsPerMinute: "{{ limit_invocations_per_minute | default(60) }}"

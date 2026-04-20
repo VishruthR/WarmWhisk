@@ -201,7 +201,7 @@
 - name: expose additional ports if jmxremote is enabled
   when: jmx.enabled
   set_fact:
-    invoker_ports_to_expose: "{{ invoker_ports_to_expose }} + [ \"{{ jmx.basePortInvoker + (invoker_index | int) }}:{{ jmx.basePortInvoker + (invoker_index | int) }}\" ] + [ \"{{ jmx.rmiBasePortInvoker + (invoker_index | int) }}:{{ jmx.rmiBasePortInvoker + (invoker_index | int) }}\" ]"
+    invoker_ports_to_expose: "{{ invoker_ports_to_expose + [(jmx.basePortInvoker + (invoker_index | int)) | string ~ ':' ~ (jmx.basePortInvoker + (invoker_index | int)) | string, (jmx.rmiBasePortInvoker + (invoker_index | int)) | string ~ ':' ~ (jmx.rmiBasePortInvoker + (invoker_index | int)) | string] }}"
 
 
 - name: Load config from template

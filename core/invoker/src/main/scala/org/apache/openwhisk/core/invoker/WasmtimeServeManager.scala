@@ -1,5 +1,5 @@
 /*
-Manages a pool of long-running `wasmtime serve` processes, one per action.
+Manages a pool of long-running `wasmtime serve` processes, N replicas per action.
 
 Lifecycle:
   - getOrStart(actionName, wasmPath) returns a Future[WasmtimeServeHandle],
@@ -45,7 +45,7 @@ final case class WasmtimeServeHandle(actionName: String,
 class WasmtimeServeManager(workDir: Path,
                            wasmtimeBinary: String = "wasmtime",
                            portRangeStart: Int = 18000,
-                           portRangeEnd: Int = 18999,
+                           portRangeEnd: Int = 19999,
                            readinessTimeout: FiniteDuration = 10.seconds,
                            readinessPollInterval: FiniteDuration = 20.millis)(implicit ec: ExecutionContext,
                                                                               logging: Logging) {
@@ -56,7 +56,10 @@ class WasmtimeServeManager(workDir: Path,
     q
   }
 
-  private val servers = new ConcurrentHashMap[String, Future[WasmtimeServeHandle]]()
+  private val NUM_REPLICAS = 4
+  private val servers = new ConcurrentHashMap[String, IndexedSeq[Future[WasmtimeServeHandle]]]()
+  private val roundRobin = new ConcurrentHashMap[String, java.util.concurrent.atomic.AtomicInteger]()
+
 
   Runtime.getRuntime.addShutdownHook(new Thread(() => shutdownAll(), "wasmtime-serve-shutdown"))
 
@@ -66,53 +69,58 @@ class WasmtimeServeManager(workDir: Path,
    * the same startup.
    */
   def getOrStart(actionName: String, wasmPath: Path): Future[WasmtimeServeHandle] = {
-    // Fast path: reuse an existing handle if the process is still alive.
-    val existing = servers.get(actionName)
-    if (existing != null) {
-      existing.value match {
-        case Some(Success(h)) if !h.process.isAlive =>
-          logging.warn(this, s"[wasmtime-serve] '$actionName' process died; restarting")
-          servers.remove(actionName, existing)
-          availablePorts.offer(Integer.valueOf(h.port))
-        case _ => // pending or alive
-      }
-    }
-
-    val fut = servers.computeIfAbsent(
+    val pool = servers.computeIfAbsent(
       actionName,
       _ => {
-        val f = startServer(actionName, wasmPath)
-        f.onComplete {
-          case Failure(t) =>
-            logging.error(this, s"[wasmtime-serve] startup for '$actionName' failed: ${t.getMessage}")
-            servers.remove(actionName, f)
-          case _ => ()
-        }
-        f
+        (0 until NUM_REPLICAS).map { i =>
+          val f = startServer(s"$actionName-$i", wasmPath)
+          f.onComplete {
+            case Failure(t) =>
+              logging.error(this, s"[wasmtime-serve] startup for '$actionName' replica $i failed: ${t.getMessage}")
+            case _ => ()
+          }
+          f
+        }.toIndexedSeq
       })
-    fut
+
+    val counter = roundRobin.computeIfAbsent(actionName, _ => new java.util.concurrent.atomic.AtomicInteger(0))
+    val idx = Math.abs(counter.getAndIncrement() % NUM_REPLICAS)
+
+    // Check if chosen replica died; if so, restart it
+    val chosen = pool(idx)
+    chosen.value match {
+      case Some(Success(h)) if !h.process.isAlive =>
+      logging.warn(this, s"[wasmtime-serve] '$actionName' replica $idx died; restarting")
+      val newFut = startServer(s"$actionName-$idx", wasmPath)
+      availablePorts.offer(Integer.valueOf(h.port))
+      val newPool = pool.updated(idx, newFut)
+      servers.replace(actionName, pool, newPool)
+      newFut
+
+      case _ =>
+        chosen
+    }
   }
 
   /** Stops the server for a specific action (if any). Safe to call multiple times. */
   def shutdown(actionName: String): Future[Unit] = {
     val removed = servers.remove(actionName)
+    roundRobin.remove(actionName)
     if (removed == null) Future.successful(())
-    else
-      removed.transform { result =>
-        result match {
-          case Success(h) =>
-            val t0 = System.nanoTime()
-            h.process.destroy()
-            if (!h.process.waitFor(2, TimeUnit.SECONDS)) h.process.destroyForcibly()
-            availablePorts.offer(Integer.valueOf(h.port))
-            val elapsedMs = (System.nanoTime() - t0) / 1e6
-            logging.info(
-              this,
-              s"[wasmtime-serve] shut down '$actionName' on port ${h.port} in ${elapsedMs}ms")
-          case Failure(_) => () // startup never succeeded; nothing to stop
+    else {
+      Future.sequence(removed.map { fut =>
+        fut.transform { result =>
+          result match {
+            case Success(h) =>
+              h.process.destroy()
+              if (!h.process.waitFor(2, TimeUnit.SECONDS)) h.process.destroyForcibly()
+              availablePorts.offer(Integer.valueOf(h.port))
+            case Failure(_) => ()
+          }
+          Success(())
         }
-        Success(())
-      }
+      }).map(_ => ())
+    }
   }
 
   /** Stops every running server. Called from the JVM shutdown hook. */

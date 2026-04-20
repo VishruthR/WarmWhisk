@@ -121,10 +121,7 @@
     jmx_remote_rmi_port:
       "{{ jmx.rmiBasePortController + (controller_index|int) }}"
   set_fact:
-    ports_to_expose: >-
-      {{ ports_to_expose }} +
-      [ '{{ jmx_remote_port }}:{{ jmx_remote_port }}' ] +
-      [ '{{ jmx_remote_rmi_port }}:{{ jmx_remote_rmi_port }}' ]
+    ports_to_expose: "{{ ports_to_expose + [jmx_remote_port ~ ':' ~ jmx_remote_port, jmx_remote_rmi_port ~ ':' ~ jmx_remote_rmi_port] }}"
     controller_args: >-
       {{ controller.arguments }}
       {{ jmx.jvmCommonArgs }}
