@@ -229,6 +229,7 @@ class InvokerWASM(
   private def executeWithWasmtimeServe(actionName: String,
                                        handle: WasmtimeServeHandle,
                                        params: JsObject): Future[(ActivationResponse, Instant, Instant)] = {
+    MetricEmitter.emitCounterMetric(LoggingMarkers.INVOKER_WASM_SERVE)
     val t0 = System.nanoTime()
     val started = Instant.now
 
@@ -286,6 +287,7 @@ class InvokerWASM(
   private def executeWithWasmtimeRun(actionName: String,
                                      actionPath: java.nio.file.Path,
                                      params: JsObject): Future[(ActivationResponse, Instant, Instant)] = {
+    MetricEmitter.emitCounterMetric(LoggingMarkers.INVOKER_WASM_RUN)
     // Sort params alphabetically and pass as positional CLI args (matches the
     // contract the old InvokerWASM used before wasmtime serve was introduced).
     val args = params.fields.toSeq.sortBy(_._1).map(p => argToString(p._2))

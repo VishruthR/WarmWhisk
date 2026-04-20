@@ -516,6 +516,14 @@ object LoggingMarkers {
   def INVOKER_CONTAINER_CREATE(action: String, state: String) =
     LogMarkerToken(invoker, "creation", counter, None, Map("action" -> action, "state" -> state))(MeasurementUnit.none)
   val INVOKER_CONTAINER_HEALTH = LogMarkerToken(invoker, "containerHealth", start)(MeasurementUnit.time.milliseconds)
+
+  // WASM execution path counters: incremented each time InvokerWASM dispatches
+  // an activation via the fork+exec `wasmtime run` path vs. the long-lived
+  // `wasmtime serve` HTTP path.
+  val INVOKER_WASM_RUN =
+    LogMarkerToken(invoker, "wasmRun", counter)(MeasurementUnit.none)
+  val INVOKER_WASM_SERVE =
+    LogMarkerToken(invoker, "wasmServe", counter)(MeasurementUnit.none)
   val INVOKER_CONTAINER_HEALTH_FAILED_WARM =
     LogMarkerToken(invoker, "containerHealthFailed", counter, Some("warm"), Map("containerState" -> "warm"))(
       MeasurementUnit.none)
