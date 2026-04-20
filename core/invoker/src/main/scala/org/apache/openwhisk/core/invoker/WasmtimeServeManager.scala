@@ -93,6 +93,33 @@ class WasmtimeServeManager(workDir: Path,
     fut
   }
 
+  /**
+   * Non-blocking check for a ready server. Returns Some(handle) only if a server
+   * has finished starting up and its process is still alive; returns None if no
+   * server exists, startup is still in flight, or startup failed. Never triggers
+   * a new startup.
+   */
+  def tryGet(actionName: String): Option[WasmtimeServeHandle] = {
+    val f = servers.get(actionName)
+    if (f == null) None
+    else
+      f.value match {
+        case Some(Success(h)) if h.process.isAlive => Some(h)
+        case _                                     => None
+      }
+  }
+
+  /**
+   * Kicks off startup for an action if no server is running or currently starting.
+   * Returns immediately without waiting for readiness. Idempotent: concurrent calls
+   * for the same actionName coalesce onto the same in-flight startup (via
+   * `getOrStart` / `computeIfAbsent`).
+   */
+  def startInBackground(actionName: String, wasmPath: Path): Unit = {
+    getOrStart(actionName, wasmPath)
+    ()
+  }
+
   /** Stops the server for a specific action (if any). Safe to call multiple times. */
   def shutdown(actionName: String): Future[Unit] = {
     val removed = servers.remove(actionName)

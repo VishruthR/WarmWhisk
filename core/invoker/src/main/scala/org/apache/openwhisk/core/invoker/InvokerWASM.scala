@@ -185,10 +185,27 @@ class InvokerWASM(
     val actionFileName = getActionFilename(executable.fullyQualifiedName(false).asString)
 
     def runWasm(actionPath: java.nio.file.Path): Future[(ActivationResponse, Instant, Instant)] = {
+      // Health actions are plain core-module .wasm files that `wasmtime serve` cannot
+      // host, so they always go through the fork+exec `wasmtime run` path.
       if (isHealthAction(executable.name.asString)) {
         executeWithWasmtimeRun(actionFileName, actionPath, params)
       } else {
-        executeWithWasmtimeServe(actionFileName, actionPath, params)
+        // Prefer a ready wasmtime-serve instance. If none is ready yet, start one
+        // asynchronously (so it's warm for the next invocation) and handle this
+        // activation via the fork+exec `wasmtime run` fallback.
+        serveManager.tryGet(actionFileName) match {
+          case Some(handle) =>
+            logging.info(
+              this,
+              s"[wasmtime-serve] using ready server action=$actionFileName port=${handle.port}")
+            executeWithWasmtimeServe(actionFileName, handle, params)
+          case None =>
+            logging.info(
+              this,
+              s"[wasmtime-serve] no ready server for action=$actionFileName; starting in background and falling back to wasmtime run")
+            serveManager.startInBackground(actionFileName, actionPath)
+            executeWithWasmtimeRun(actionFileName, actionPath, params)
+        }
       }
     }
 
@@ -210,55 +227,47 @@ class InvokerWASM(
   }
 
   private def executeWithWasmtimeServe(actionName: String,
-                                       actionPath: java.nio.file.Path,
+                                       handle: WasmtimeServeHandle,
                                        params: JsObject): Future[(ActivationResponse, Instant, Instant)] = {
     val t0 = System.nanoTime()
     val started = Instant.now
 
-    val tStart = System.nanoTime()
-    serveManager.getOrStart(actionName, actionPath).flatMap { handle =>
-      val startupMs = (System.nanoTime() - tStart) / 1e6
-      logging.info(
-        this,
-        s"[wasm-timing] serve-ready action=$actionName port=${handle.port} startup-or-reuse=${startupMs}ms")
+    val tReq = System.nanoTime()
+    val body = params.compactPrint
+    val request = HttpRequest(
+      method = HttpMethods.POST,
+      uri = s"${handle.baseUrl}/",
+      entity = HttpEntity(ContentTypes.`application/json`, body.getBytes(StandardCharsets.UTF_8)))
 
-      val tReq = System.nanoTime()
-      val body = params.compactPrint
-      val request = HttpRequest(
-        method = HttpMethods.POST,
-        uri = s"${handle.baseUrl}/",
-        entity = HttpEntity(ContentTypes.`application/json`, body.getBytes(StandardCharsets.UTF_8)))
+    Http().singleRequest(request).flatMap { resp =>
+      resp.entity.toStrict(wasmtimeInvokeTimeout).map { strict =>
+        val text = strict.data.utf8String
+        val reqMs = (System.nanoTime() - tReq) / 1e6
+        logging.info(
+          this,
+          s"[wasm-timing] http-request action=$actionName port=${handle.port} status=${resp.status.intValue} bytes=${text.length} in ${reqMs}ms")
 
-      Http().singleRequest(request).flatMap { resp =>
-        resp.entity.toStrict(wasmtimeInvokeTimeout).map { strict =>
-          val text = strict.data.utf8String
-          val reqMs = (System.nanoTime() - tReq) / 1e6
-          logging.info(
-            this,
-            s"[wasm-timing] http-request action=$actionName port=${handle.port} status=${resp.status.intValue} bytes=${text.length} in ${reqMs}ms")
-
-          val response =
-            if (resp.status.isSuccess()) {
-              val json = Try(text.parseJson).getOrElse(JsObject("result" -> JsString(text.trim)))
-              json match {
-                case JsObject(fields) if fields.contains(ActivationResponse.ERROR_FIELD) =>
-                  ActivationResponse.applicationError(fields(ActivationResponse.ERROR_FIELD))
-                case _ =>
-                  ActivationResponse.success(Some(json))
-              }
-            } else {
-              ActivationResponse.developerError(
-                s"wasmtime serve returned ${resp.status.intValue}: ${text.trim}")
+        val response =
+          if (resp.status.isSuccess()) {
+            val json = Try(text.parseJson).getOrElse(JsObject("result" -> JsString(text.trim)))
+            json match {
+              case JsObject(fields) if fields.contains(ActivationResponse.ERROR_FIELD) =>
+                ActivationResponse.applicationError(fields(ActivationResponse.ERROR_FIELD))
+              case _ =>
+                ActivationResponse.success(Some(json))
             }
+          } else {
+            ActivationResponse.developerError(
+              s"wasmtime serve returned ${resp.status.intValue}: ${text.trim}")
+          }
 
-          val end = Instant.now
-          val activationMs = java.time.Duration.between(started, end).toMillis
-          val totalMs = (System.nanoTime() - t0) / 1e6
-          logging.info(
-            this,
-            s"[wasm-timing] total=${totalMs}ms (startup-or-reuse=${startupMs}ms, httpRequest=${reqMs}ms, activation=${activationMs}ms)")
-          (response, started, end)
-        }
+        val end = Instant.now
+        val activationMs = java.time.Duration.between(started, end).toMillis
+        val totalMs = (System.nanoTime() - t0) / 1e6
+        logging.info(
+          this,
+          s"[wasm-timing] total=${totalMs}ms (httpRequest=${reqMs}ms, activation=${activationMs}ms)")
+        (response, started, end)
       }
     }.recover {
       case t: Throwable =>
@@ -271,9 +280,8 @@ class InvokerWASM(
   }
 
   /**
-   * Legacy `wasmtime run` fork+exec flow, used for the invoker health-check action
-   * (which is a plain core-module .wasm, not a wasi:http/proxy component, so
-   * `wasmtime serve` can't run it).
+   * Backup execution path when wasmtime serve instance is starting up
+   * Also used by InvokerHealthTestAction always
    */
   private def executeWithWasmtimeRun(actionName: String,
                                      actionPath: java.nio.file.Path,
@@ -288,7 +296,7 @@ class InvokerWASM(
       try {
         val started = Instant.now
         val t1 = System.nanoTime()
-        val command = Seq("wasmtime", "--dir", ".", actionPath.toString) ++ args
+        val command = Seq("wasmtime", "-Scli", "-Shttp", "--dir", ".", actionPath.toString) ++ args
         logging.info(this, s"[wasm-run] executing action=$actionName cmd=${command.mkString(" ")}")
 
         val pb = new ProcessBuilder(command: _*)
