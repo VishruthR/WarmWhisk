@@ -72,9 +72,13 @@ class DataProximityPoolBalancer(
 
   override def publish(action: ExecutableWhiskActionMetaData, msg: ActivationMessage)(
     implicit transid: TransactionId): Future[Future[Either[ActivationId, WhiskActivation]]] = {
+
+    val isBlackboxInvocation = action.exec.pull
+    val actionType = if (!isBlackboxInvocation) "managed" else "blackbox"
+
+
+    
   }
-
-
 
   override val invokerPool: ActorRef =
     invokerPoolFactory.createInvokerPool(
@@ -119,7 +123,6 @@ object DataProximityPoolBalancer extends LoadBalancerProvider {
               maxPeek = 128),
             monitor))
       }
-
     }
 
     new DataProximityPoolBalancer(
