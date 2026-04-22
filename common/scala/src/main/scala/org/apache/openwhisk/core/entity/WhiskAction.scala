@@ -423,8 +423,7 @@ object WhiskAction extends DocumentFactory[WhiskAction] with WhiskEntityQueries[
                                      doc: DocId,
                                      rev: DocRevision = DocRevision.empty,
                                      fromCache: Boolean,
-                                     ignoreMissingAttachment: Boolean = false,
-                                     fetchAttachment: Boolean = true)(
+                                     ignoreMissingAttachment: Boolean = false)(
     implicit transid: TransactionId,
     mw: Manifest[WhiskAction]): Future[WhiskAction] = {
 
@@ -447,9 +446,9 @@ object WhiskAction extends DocumentFactory[WhiskAction] with WhiskEntityQueries[
       }
 
       action.exec match {
-        case exec @ CodeExecAsAttachment(_, attached: Attached, _, binary) if fetchAttachment=>
+        case exec @ CodeExecAsAttachment(_, attached: Attached, _, binary) =>
           getWithAttachment(attached, binary, exec)
-        case exec @ BlackBoxExec(_, Some(attached: Attached), _, _, binary) if fetchAttachment=>
+        case exec @ BlackBoxExec(_, Some(attached: Attached), _, _, binary) =>
           getWithAttachment(attached, binary, exec)
         case _ =>
           Future.successful(action)

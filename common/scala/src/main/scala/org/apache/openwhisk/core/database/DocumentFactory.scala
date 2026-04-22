@@ -165,8 +165,7 @@ trait DocumentFactory[W <: DocumentRevisionProvider] extends MultipleReadersSing
     doc: DocId,
     rev: DocRevision = DocRevision.empty,
     fromCache: Boolean = cacheEnabled,
-    ignoreMissingAttachment: Boolean = false,
-    fetchAttachment: Boolean = true)(implicit transid: TransactionId, mw: Manifest[W]): Future[W] = {
+    ignoreMissingAttachment: Boolean = false)(implicit transid: TransactionId, mw: Manifest[W]): Future[W] = {
     implicit val logger = db.logging
     implicit val ec = db.executionContext
     val key = doc.asDocInfo(rev)

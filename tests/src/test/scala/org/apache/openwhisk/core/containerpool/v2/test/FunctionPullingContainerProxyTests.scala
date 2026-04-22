@@ -211,7 +211,7 @@ class FunctionPullingContainerProxyTests
 
   /** get WhiskAction*/
   def getWhiskAction(response: Future[WhiskAction]) = LoggedFunction {
-    (_: ArtifactStore[WhiskEntity], _: DocId, _: DocRevision, _: Boolean, _: Boolean, _: Boolean) =>
+    (_: ArtifactStore[WhiskEntity], _: DocId, _: DocRevision, _: Boolean, _: Boolean) =>
       response
   }
 
