@@ -106,7 +106,7 @@ class RoundRobinPoolBalancer(
     MetricEmitter.emitGaugeMetric(OFFLINE_INVOKER_BLACKBOX, schedulingState.blackboxInvokers.count(_.status == Offline))
   }
 
-  val schedulingState: ShardingContainerPoolBalancerState = ()(lbConfig)
+  val schedulingState:ShardingContainerPoolBalancerState = ShardingContainerPoolBalancerState()(lbConfig)
 
   private val monitor = actorSystem.actorOf(Props(new Actor {
     override def preStart(): Unit = {
