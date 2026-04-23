@@ -14,16 +14,23 @@ Metrics are exported by OpenWhisk then analyzed on a local machine so that we ca
 ```
 # SSH tunnel metrics to local machine
 # This will export controller metrics to port 8081 and user-events metrics to 9095 if you used `start_up_ow.sh`
-# You may need to start multiple SSH tunnels if you also want to export invoker metrics
 ssh -N -L 8001:127.0.0.1:10001 -L 8005:127.0.0.1:9095 vmraj2@sp26-cs525-1820.cs.illinois.edu
+ssh -N -L 8010:127.0.0.1:12001 -L 8510:127.0.0.1:8005 vmraj2@sp26-cs525-1819.cs.illinois.edu
+ssh -N -L 8011:127.0.0.1:12002 -L 8511:127.0.0.1:8005 vmraj2@sp26-cs525-1818.cs.illinois.edu
+ssh -N -L 8012:127.0.0.1:12003 -L 8512:127.0.0.1:8005 vmraj2@sp26-cs525-1817.cs.illinois.edu
 
 # Start Grafana
-docker run -d -p 3000:3000 --name=grafana grafana/Grafana
+docker run -d -p 3000:3000 \
+    --name=grafana \
+    -v 525-grafana:/var/lib/grafana \
+    -e "GF_INSTALL_PLUGINS=leoswing-comparequeries-datasource" \
+    grafana/grafana
 
 # Start Prometheus
 docker run \
     -p 9090:9090 \
     -v ./prometheus.yml:/etc/prometheus/prometheus.yml \
+    --name=prometheus \
     prom/prometheus
 ```
 
