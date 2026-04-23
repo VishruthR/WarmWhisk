@@ -29,7 +29,7 @@ sudo systemctl start docker
 # ── Python deps (needed for Ansible to manage this host over SSH) ───────────
 
 sudo dnf install python3-pip -y
-pip3 install --user docker 'requests<2.32.0'
+pip3 install --user docker 'requests<2.29.0'
 
 # ── Control machine extras ──────────────────────────────────────────────────
 

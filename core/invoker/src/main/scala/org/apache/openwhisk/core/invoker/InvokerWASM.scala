@@ -146,14 +146,18 @@ class InvokerWASM(
     executable.exec match {
       case CodeExecAsAttachment(_, Attachments.Inline(code), _, binary) if binary =>
         Future {
+          val t0 = System.nanoTime()
           val bytes = java.util.Base64.getDecoder.decode(code)
           val tmp = java.io.File.createTempFile("wasm-action-", ".wasm")
           val workDir = java.nio.file.Files.createTempDirectory("wasm-work-").toFile
           try {
             val fos = new java.io.FileOutputStream(tmp)
             try fos.write(bytes) finally fos.close()
+            val fileWriteMs = (System.nanoTime() - t0) / 1e6
+            logging.info(this, s"[wasm-timing] base64 decode + file write (${bytes.length} bytes) in ${fileWriteMs}ms")
 
             val started = Instant.now
+            val t1 = System.nanoTime()
             val command = Seq(wasmtimeBinary, "--dir", ".", tmp.getAbsolutePath) ++ args
             logging.info(this, s"executing: ${command.mkString(" ")}")
             val processBuilder = new ProcessBuilder(command: _*)
@@ -161,9 +165,19 @@ class InvokerWASM(
             processBuilder.redirectErrorStream(true)
             val process = processBuilder.start()
             process.getOutputStream.close()
+            val forkMs = (System.nanoTime() - t1) / 1e6
+            logging.info(this, s"[wasm-timing] fork + exec wasmtime in ${forkMs}ms")
 
+            val t2 = System.nanoTime()
             val output = scala.io.Source.fromInputStream(process.getInputStream, StandardCharsets.UTF_8.name()).mkString
+            val readOutputMs = (System.nanoTime() - t2) / 1e6
+            logging.info(this, s"[wasm-timing] read stdout (${output.length} chars) in ${readOutputMs}ms")
+
+            val t3 = System.nanoTime()
             val finished = process.waitFor(wasmtimeInvokeTimeout.toMillis, TimeUnit.MILLISECONDS)
+            val waitMs = (System.nanoTime() - t3) / 1e6
+            logging.info(this, s"[wasm-timing] waitFor completed in ${waitMs}ms (finished=$finished)")
+
             val response =
               if (!finished) {
                 process.destroyForcibly()
@@ -183,7 +197,12 @@ class InvokerWASM(
                 }
               }
 
-            (response, started, Instant.now)
+            val end = Instant.now
+            val activationMs = java.time.Duration.between(started, end).toMillis
+            val totalMs = (System.nanoTime() - t0) / 1e6
+            logging.info(this, s"[wasm-timing] total=${totalMs}ms (file=${fileWriteMs}ms, fork=${forkMs}ms, readStdout=${readOutputMs}ms, wait=${waitMs}ms, activation=${activationMs}ms)")
+
+            (response, started, end)
           } finally {
             tmp.delete()
             deleteRecursively(workDir)
