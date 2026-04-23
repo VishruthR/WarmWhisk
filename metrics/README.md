@@ -34,6 +34,8 @@ docker run \
     prom/prometheus
 ```
 
+You can copy `dashboard.json` into grafana for a convenient default dashboard.
+
 ### Troubleshooting
 
 For Grafana and Prometheus to talk to each other, they need to use `host.docker.internal` as their host (at least on Mac).
