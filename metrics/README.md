@@ -30,8 +30,11 @@ docker run -d -p 3000:3000 \
 docker run \
     -p 9090:9090 \
     -v ./prometheus.yml:/etc/prometheus/prometheus.yml \
+    -v 525-prometheus:/prometheus \
     --name=prometheus \
-    prom/prometheus
+    prom/prometheus \
+    --config.file=/etc/prometheus/prometheus.yml \
+    --storage.tsdb.retention.time=30d
 ```
 
 You can copy `dashboard.json` into grafana for a convenient default dashboard.
