@@ -177,7 +177,10 @@ class InvokerWASM(
         if (isHealthAction(executable)) {
           executeWithWasmtimeRun(actionName, actionPath, params)
         } else {
-          executeWithWasmtimeServe(actionName, actionPath, params)
+          // executeWithWasmtimeServe(actionName, actionPath, params)
+          serveManager.getOrStart(actionName, actionPath).flatMap { handle =>
+            executeWithWasmtimeServe(actionName, handle, params)
+          }
         }
 
       case _ =>

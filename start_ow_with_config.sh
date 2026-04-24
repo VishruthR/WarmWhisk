@@ -32,6 +32,7 @@ for host in "${INVOKER_HOSTS[@]}"; do
   docker save whisk/invoker | ssh "$host" 'docker load'
 done
 
+
 # If your ansible inventory depends on invoker count, ensure that inventory
 # is also generated/updated from the same config file before this step.
 cd ansible
