@@ -5,3 +5,4 @@ wsk -i action create bench_disk_seq /home/vmraj2/faasrail/faasrail-benchmarks/ta
 wsk -i action create bench_float /home/vmraj2/faasrail/faasrail-benchmarks/target/wasm32-wasip2/release/bench-float.wasm --kind wasm:wasmtime --main _start
 wsk -i action create bench_gzip /home/vmraj2/faasrail/faasrail-benchmarks/target/wasm32-wasip2/release/bench-gzip.wasm --kind wasm:wasmtime --main _start
 wsk -i action create bench_json /home/vmraj2/faasrail/faasrail-benchmarks/target/wasm32-wasip2/release/bench-json.wasm --kind wasm:wasmtime --main _start
+wsk -i action create bench_dp /home/vmraj2/faasrail/faasrail-benchmarks/target/wasm32-wasip2/release/bench-dp.wasm --kind wasm:wasmtime --main _start

@@ -49,6 +49,7 @@ ADD build/distributions/invoker.tar ./
 COPY init.sh /
 COPY wasmtime-config.toml /etc/wasmtime/config.toml
 RUN chmod +x init.sh
+RUN mkdir -p /data_dependencies
 
 # When running the invoker as a non-root user this has implications on the standard directory where runc stores its data.
 # The non-root user should have access on the directory and corresponding permission to make changes on it.

@@ -45,7 +45,7 @@ import spray.json.DefaultJsonProtocol._
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
-import java.nio.file.Paths
+import java.nio.file.{Files, Paths}
 
 object InvokerWASM extends InvokerProvider {
   override def instance(
@@ -70,6 +70,8 @@ class InvokerWASM(
   implicit val cfg: WhiskConfig = config
 
   private val wasmtimeInvokeTimeout = 60.seconds
+
+  private val dataDependencyRoot = Paths.get("/data_dependencies")
 
   /** Initialize needed databases */
   private val entityStore = WhiskEntityStore.datastore()
@@ -137,6 +139,16 @@ class InvokerWASM(
     actionPath
   }
 
+    /**
+   * Canonical key for a data-dependency entry in both the controller's
+   * `fileToInvokers` index and the invoker's `localFiles` ping payload.
+   * Both sides must call this helper to avoid silent drift.
+   *
+   * Format: `[namespace]/[actionName]/[fileName]`, e.g. `/guest/myAction/weights.bin`.
+   */
+  def dependencyKey(actionName: FullyQualifiedEntityName, fileName: String): String =
+    s"${actionName.asString}/$fileName"
+
   // The invoker health probe uses a plain core-module `.wasm` (not a wasi:http/proxy
   // component), which `wasmtime serve` cannot run. Route it through the legacy
   // fork+exec `wasmtime run` path instead. Identified by the action name prefix
@@ -169,7 +181,8 @@ class InvokerWASM(
       case _                                          => executable.parameters.toJsObject
     }
 
-    val actionName = executable.fullyQualifiedName(false).asString.replace('/', '_')
+    val actionDir = executable.fullyQualifiedName(false).toString
+    val actionName = actionDir.replace('/', '_')
 
     executable.exec match {
       case CodeExecAsAttachment(_, Attachments.Inline(code), _, binary) if binary =>
@@ -179,7 +192,7 @@ class InvokerWASM(
         } else {
           // executeWithWasmtimeServe(actionName, actionPath, params)
           serveManager.getOrStart(actionName, actionPath).flatMap { handle =>
-            executeWithWasmtimeServe(actionName, handle, params)
+            executeWithWasmtimeServe(actionDir, handle, params)
           }
         }
 
@@ -191,15 +204,25 @@ class InvokerWASM(
     }
   }
 
-  private def executeWithWasmtimeServe(actionName: String,
+  private def executeWithWasmtimeServe(actionDir: String,
                                        handle: WasmtimeServeHandle,
                                        params: JsObject): Future[(ActivationResponse, Instant, Instant)] = {
     MetricEmitter.emitCounterMetric(LoggingMarkers.INVOKER_WASM_SERVE)
     val t0 = System.nanoTime()
     val started = Instant.now
 
+    // Store each action's data-dependency cache under `dataDependencyRoot` so
+    // the layout matches what `pingLocalFiles` advertises to the controller
+    // (namespace/actionName/fileName, keyed via `dependencyKey`).
+    val actionDirPath = dataDependencyRoot.resolve(actionDir)
+    if (!Files.exists(actionDirPath)) {
+      Files.createDirectories(actionDirPath)
+    }
+
     val tReq = System.nanoTime()
-    val body = params.compactPrint
+    // We append a data dependency path to the params so the action can use it to cache data dependencies
+    val newParams = JsObject(params.fields + ("dataDependencyPath" -> JsString(actionDirPath.toString)))
+    val body = newParams.compactPrint
     val request = HttpRequest(
       method = HttpMethods.POST,
       uri = s"${handle.baseUrl}/",
@@ -211,7 +234,7 @@ class InvokerWASM(
         val reqMs = (System.nanoTime() - tReq) / 1e6
         logging.info(
           this,
-          s"[wasm-timing] http-request action=$actionName port=${handle.port} status=${resp.status.intValue} bytes=${text.length} in ${reqMs}ms")
+          s"[wasm-timing] http-request action=${actionDir} port=${handle.port} status=${resp.status.intValue} bytes=${text.length} in ${reqMs}ms")
 
         val response =
           if (resp.status.isSuccess()) {
@@ -240,7 +263,7 @@ class InvokerWASM(
         val end = Instant.now
         logging.error(
           this,
-          s"[wasmtime-serve] invocation failed action=$actionName: ${t.getClass.getName}: ${t.getMessage}")
+          s"[wasmtime-serve] invocation failed action=${actionDir}: ${t.getClass.getName}: ${t.getMessage}")
         (ActivationResponse.whiskError(s"wasmtime serve failure: ${t.getMessage}"), started, end)
     }
   }
@@ -511,9 +534,62 @@ class InvokerWASM(
 
   private var healthScheduler: Option[ActorRef] = Some(getHealthScheduler)
 
+  private def getLocalFilesScheduler: ActorRef =
+    Scheduler.scheduleWaitAtMost(10.seconds)(() => pingLocalFiles())
+
+  /**
+   * Snapshot the on-disk data-dependency cache rooted at [[dataDependencyRoot]]
+   * and return entries in the same `namespace/actionName/fileName` form that
+   * the controller's `DataProximityPoolBalancer.dependencyKey` produces.
+   *
+   * Only regular files are reported; directories are traversed but omitted.
+   * Missing roots yield an empty list so a fresh invoker is still advertised
+   * as reachable (the controller will just have no cached-file entries for it).
+   */
+  private def enumerateLocalFiles(): Seq[String] = {
+    if (!Files.exists(dataDependencyRoot)) {
+      Seq.empty
+    } else {
+      val stream = Files.walk(dataDependencyRoot)
+      try {
+        val buf = scala.collection.mutable.ArrayBuffer.empty[String]
+        val it = stream.iterator()
+        while (it.hasNext) {
+          val p = it.next()
+          if (Files.isRegularFile(p)) {
+            val rel = dataDependencyRoot.relativize(p).toString
+            if (rel.nonEmpty) buf += rel
+          }
+        }
+        buf.toSeq
+      } finally {
+        stream.close()
+      }
+    }
+  }
+
+  private def pingLocalFiles(): Future[_] = {
+    val localFiles =
+      try enumerateLocalFiles()
+      catch {
+        case t: Throwable =>
+          logging.error(this, s"failed to enumerate local data dependencies at $dataDependencyRoot: $t")
+          Seq.empty[String]
+      }
+
+    healthProducer
+      .send(s"${Invoker.topicPrefix}health", PingMessage(instance, localFiles = Some(localFiles)))
+      .andThen {
+        case Failure(t) => logging.error(this, s"failed to ping the controller (local files): $t")
+      }
+  }
+
+  private var localFilesScheduler: Option[ActorRef] = Some(getLocalFilesScheduler)
+
   override def enable(): String = {
     if (healthScheduler.isEmpty) {
       healthScheduler = Some(getHealthScheduler)
+      if (localFilesScheduler.isEmpty) localFilesScheduler = Some(getLocalFilesScheduler)
       s"${instance.toString} is now enabled."
     } else {
       s"${instance.toString} is already enabled."
@@ -525,6 +601,8 @@ class InvokerWASM(
     if (healthScheduler.nonEmpty) {
       actorSystem.stop(healthScheduler.get)
       healthScheduler = None
+      localFilesScheduler.foreach(actorSystem.stop)
+      localFilesScheduler = None
       s"${instance.toString} is now disabled."
     } else {
       s"${instance.toString} is already disabled."
