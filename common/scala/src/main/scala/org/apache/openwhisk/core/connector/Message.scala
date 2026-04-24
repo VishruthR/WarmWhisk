@@ -280,16 +280,48 @@ object AcknowledgementMessage extends DefaultJsonProtocol {
   }
 }
 
-case class PingMessage(instance: InvokerInstanceId, isEnabled: Option[Boolean] = None) extends Message {
+case class PingMessage(instance: InvokerInstanceId, isEnabled: Option[Boolean] = None, localFiles: Option[Seq[String]] = None) extends Message {
   override def serialize = PingMessage.serdes.write(this).compactPrint
 
   def invokerEnabled: Boolean = isEnabled.getOrElse(true)
 }
 
 object PingMessage extends DefaultJsonProtocol {
-  def parse(msg: String) = Try(serdes.read(msg.parseJson))
+  def parse(msg: String): Try[PingMessage] = Try(serdes.read(msg.parseJson))
 
-  implicit val serdes = jsonFormat(PingMessage.apply, "name", "isEnabled")
+  // implicit val serdes = jsonFormat(PingMessage.apply, "name", "isEnabled")
+  implicit val serdes: RootJsonFormat[PingMessage] = new RootJsonFormat[PingMessage] {
+    override def write(p: PingMessage): JsValue = {
+      val base = scala.collection.mutable.Map[String, JsValue] (
+        "name" -> p.instance.toJson
+      )
+
+      p.isEnabled.foreach(v => base += ("isEnabled" -> JsBoolean(v)))
+      p.localFiles.foreach(files => base += ("local_files" -> JsArray(files.map(JsString(_)).toVector)))
+      JsObject(base.toMap)
+    }
+
+    
+    override def read(json: JsValue): PingMessage = {
+      val obj = json.asJsObject
+      val fields = obj.fields
+
+      val instance = fields.get("name") match {
+        case Some(v)  => v.convertTo[InvokerInstanceId]
+        case None     => deserializationError("PingMessage requires 'name'")
+      }
+
+      val isEnabled = fields.get("isEnabled").map(_.convertTo[Boolean])
+      val localFiles = fields.get("local_files") match {
+        case Some(JsArray(values))  => Some(values.map(_.convertTo[String]))
+        case Some(JsNull) | None    => None
+        case Some(other)            => deserializationError(s"'local_files' must be array of strings, got: $other")
+      }
+
+      PingMessage(instance, isEnabled, localFiles)
+    }
+  }
+
 }
 
 trait EventMessageBody extends Message {
