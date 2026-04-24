@@ -60,6 +60,9 @@ case class InvocationFinishedMessage(invokerInstance: InvokerInstanceId, result:
 // Sent to a monitor if the state changed
 case class CurrentInvokerPoolState(newState: IndexedSeq[InvokerHealth])
 
+// Sent to monitor whenever local files exists
+case class InvokerLocalFiles(instance: InvokerInstanceId, localFiles: Option[Seq[String]])
+
 // Data stored in the Invoker
 final case class InvokerInfo(buffer: RingBuffer[InvocationFinishedResult])
 
@@ -106,6 +109,10 @@ class InvokerPool(childFactory: (ActorRefFactory, InvokerInstanceId) => ActorRef
       }
 
       invoker.forward(p)
+
+      if (p.localFiles.isDefined) {
+        monitor.foreach(_ ! InvokerLocalFiles(p.instance, p.localFiles))
+      }
 
     case GetStatus => sender() ! status
 

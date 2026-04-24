@@ -532,6 +532,8 @@ object LoggingMarkers {
       MeasurementUnit.none)
   val CONTAINER_CLIENT_RETRIES =
     LogMarkerToken(containerClient, "retries", counter)(MeasurementUnit.none)
+  val INVOKER_DATA_DEPENDENCY_FOUND =
+    LogMarkerToken(invoker, "dataDependencyFound", counter)(MeasurementUnit.none)
 
   val CONTAINER_POOL_RESCHEDULED_ACTIVATION =
     LogMarkerToken(containerPool, "rescheduledActivation", counter)(MeasurementUnit.none)

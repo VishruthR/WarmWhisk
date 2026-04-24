@@ -321,7 +321,6 @@ object PingMessage extends DefaultJsonProtocol {
       PingMessage(instance, isEnabled, localFiles)
     }
   }
-
 }
 
 trait EventMessageBody extends Message {
