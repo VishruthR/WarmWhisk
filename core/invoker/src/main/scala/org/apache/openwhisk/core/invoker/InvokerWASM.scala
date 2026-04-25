@@ -71,7 +71,9 @@ class InvokerWASM(
 
   private val wasmtimeInvokeTimeout = 60.seconds
 
-  private val dataDependencyRoot = Paths.get("/data_dependencies")
+  // Relative path since data_dependencies location must be relative to the working directory
+  // of each wasmtime serve instance
+  private val dataDependencyRoot = Paths.get("./data_dependencies")
 
   /** Initialize needed databases */
   private val entityStore = WhiskEntityStore.datastore()
@@ -221,8 +223,9 @@ class InvokerWASM(
 
     val tReq = System.nanoTime()
     // We append a data dependency path to the params so the action can use it to cache data dependencies
-    val newParams = JsObject(params.fields + ("dataDependencyPath" -> JsString(actionDirPath.toString)))
+    val newParams = JsObject(params.fields + ("data_dependency_path" -> JsString(actionDirPath.toString)))
     val body = newParams.compactPrint
+    logging.info(this, s"body: $body")
     val request = HttpRequest(
       method = HttpMethods.POST,
       uri = s"${handle.baseUrl}/",

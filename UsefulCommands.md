@@ -74,3 +74,16 @@ curl -sk https://127.0.0.1:10001/metrics
 # user events
 curl http://127.0.0.1:9095/metrics
 ```
+
+### Data Dependencies
+```
+wsk -i action create bench_dp /home/vmraj2/faasrail/faasrail-benchmarks/target/wasm32-wasip2/release/bench-dp.wasm --kind wasm:wasmtime --main _start
+
+# No data dependency
+wsk -i action invoke bench_dp \
+    --param url "https://static.vecteezy.com/system/resources/previews/051/679/529/non_2x%20sliced-red-strawberry-fruit-on-transparent-background-free-png.png" \
+    --param hash "deadbeef" \
+    --param filename "strawberry.png" \
+    --param max_iter 100 \
+    -r
+```
