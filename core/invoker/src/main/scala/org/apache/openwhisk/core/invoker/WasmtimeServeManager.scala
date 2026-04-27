@@ -44,7 +44,7 @@ final case class WasmtimeServeHandle(actionName: String,
 
 class WasmtimeServeManager(workDir: Path,
                            wasmtimeBinary: String = "wasmtime",
-                           portRangeStart: Int = 18000,
+                           portRangeStart: Int = 18001,
                            portRangeEnd: Int = 18999,
                            readinessTimeout: FiniteDuration = 10.seconds,
                            readinessPollInterval: FiniteDuration = 20.millis)(implicit ec: ExecutionContext,
