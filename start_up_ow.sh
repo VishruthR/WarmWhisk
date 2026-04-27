@@ -21,7 +21,7 @@ ansible-playbook -i environments/$ENVIRONMENT couchdb.yml
 ansible-playbook -i environments/$ENVIRONMENT initdb.yml
 ansible-playbook -i environments/$ENVIRONMENT wipe.yml
 ansible-playbook -i environments/$ENVIRONMENT openwhisk.yml -e skip_pull_runtimes=true
-cd ..
+cd .
 
 # run metrics service
 docker run -d --name user-events \

@@ -81,9 +81,33 @@ wsk -i action create bench_dp /home/vmraj2/faasrail/faasrail-benchmarks/target/w
 
 # No data dependency
 wsk -i action invoke bench_dp \
-    --param url "https://static.vecteezy.com/system/resources/previews/051/679/529/non_2x%20sliced-red-strawberry-fruit-on-transparent-background-free-png.png" \
+    --param url "https://static.vecteezy.com/system/resources/previews/051/679/529/non_2x/sliced-red-strawberry-fruit-on-transparent-background-free-png.png" \
     --param hash "deadbeef" \
     --param filename "strawberry.png" \
     --param max_iter 100 \
     -r
+
+# Data dependency
+wsk -i action invoke bench_dp \
+    --param url "https://static.vecteezy.com/system/resources/previews/051/679/529/non_2x/sliced-red-strawberry-fruit-on-transparent-background-free-png.png" \
+    --param hash "deadbeef" \
+    --param filename "strawberry.png" \
+    --param max_iter 100 \
+    --param data_dependency strawberry.png \
+    -r
+
+# seed images for data dependency benchmark
+cat > seed_images.sh << 'EOF'
+set -e
+
+BASE_URL="https://picsum.photos"
+START_INDEX=61
+END_INDEX=90
+
+for ((i=$START_INDEX; i<=$END_INDEX; i++)); do
+    echo "Downloading image $i"
+    curl -L -s -o "image_$i.jpg" "$BASE_URL/id/$i/300"
+done
+
+EOF
 ```

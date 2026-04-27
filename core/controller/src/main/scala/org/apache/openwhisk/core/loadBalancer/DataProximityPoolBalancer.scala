@@ -37,7 +37,7 @@ import org.apache.openwhisk.core.entity.size.SizeLong
 import org.apache.openwhisk.spi.SpiLoader
 import pureconfig._
 import pureconfig.generic.auto._
-import spray.json.DefaultJsonProtocol._
+import spray.json._
 import scala.collection.concurrent.TrieMap
 
 import scala.concurrent.Future
@@ -48,7 +48,7 @@ import scala.concurrent.duration.FiniteDuration
  * Invokers may cache certain data. If an activation arrives with a data_dependency in its annotations, the invoker checks if that dependency exists
  * on any invoker, if so, the request gets routed to that invoker, otherwise, it follow a normal round robin approach.
  * 
- * Data dependencies are passed in under the "data_dependency" annotation. This should be the file name of the dependency.
+ * Data dependencies are passed in under the "data_dependency" parameter. This should be the file name of the dependency.
  * The invoker will take the FullyQualifiedEntityName and append the data dependency file name to form the data dependency path.
  * This enables sharing of data within the same namespace.
  * [namespace]/[actionName]/[dataDependecyFileName]
@@ -81,6 +81,8 @@ class DataProximityPoolBalancer(
   private val rrManaged = new AtomicInteger(0)
   private val rrBlackbox = new AtomicInteger(0)
 
+  private var dataDepdencyFoundCounter = 0
+
   override protected def emitMetrics(): Unit = {
     super.emitMetrics()
     MetricEmitter.emitGaugeMetric(
@@ -109,6 +111,7 @@ class DataProximityPoolBalancer(
       UNRESPONSIVE_INVOKER_BLACKBOX,
       schedulingState.blackboxInvokers.count(_.status == Unresponsive))
     MetricEmitter.emitGaugeMetric(OFFLINE_INVOKER_BLACKBOX, schedulingState.blackboxInvokers.count(_.status == Offline))
+    MetricEmitter.emitCounterMetric(INVOKER_DATA_DEPENDENCY_FOUND, dataDepdencyFoundCounter)
   }
 
   val schedulingState: DataProximityPoolBalancerState = DataProximityPoolBalancerState()()
@@ -152,9 +155,14 @@ class DataProximityPoolBalancer(
       if (!isBlackboxInvocation) (schedulingState.managedInvokers, rrManaged)
       else (schedulingState.blackboxInvokers, rrBlackbox)
 
+    val dataDependencyOpt: Option[String] = msg.content.flatMap {
+      case JsObject(fields) => fields.get("data_dependency").collect { case JsString(s) => s }
+      case _                => None
+    }
+
     val chosen = if (invokersToUse.nonEmpty) {
       val start = Math.floorMod(rrCounter.getAndIncrement(), invokersToUse.size)
-      val invoker: Option[(InvokerInstanceId, Boolean)] = DataProximityPoolBalancer.schedule(
+      val (invoker, dataDepdencyFound) = DataProximityPoolBalancer.schedule(
         action.limits.concurrency.maxConcurrent,
         action.fullyQualifiedName(true),
         invokersToUse,
@@ -162,8 +170,12 @@ class DataProximityPoolBalancer(
         action.limits.memory.megabytes,
         schedulingState.fileToInvokers,
         action.fullyQualifiedName(false),
-        action.annotations.getAs[String]("data_dependency").toOption,
+        dataDependencyOpt,
         start)
+      if (dataDepdencyFound) {
+        dataDepdencyFoundCounter += 1
+        logging.info(this, s"data dependency found for activation ${action.fullyQualifiedName(true)} to invoker ${invoker.get._1} (data-proximity)")
+      }
       invoker.foreach {
         case (_, true) =>
           val metric =
@@ -278,32 +290,34 @@ object DataProximityPoolBalancer extends LoadBalancerProvider {
     fileToInvokers: TrieMap[String, Set[InvokerInstanceId]],
     actionName: FullyQualifiedEntityName,
     dataDependency: Option[String],
-    startIndex: Int)(implicit logging: Logging, transId: TransactionId): Option[(InvokerInstanceId, Boolean)] = {
+    startIndex: Int)(implicit logging: Logging, transId: TransactionId): (Option[(InvokerInstanceId, Boolean)], Boolean) = {
 
     dataDependency.foreach { dep =>
       val key = dependencyKey(actionName, dep)
       val ids = fileToInvokers.getOrElse(key, Set.empty[InvokerInstanceId])
+      logging.info(this, s"activation has data dependency $key")
+      logging.info(this, s"invoker ids: $ids")
       if (ids.nonEmpty) {
         // Intersect with the caller's partition (managed/blackbox) and filter by health.
         val it = invokers.iterator.filter(h => ids.contains(h.id) && h.status.isUsable)
         while (it.hasNext) {
           val h = it.next()
           if (dispatched(h.id.toInt).tryAcquireConcurrent(fqn, maxConcurrent, slots)) {
-            return Some((h.id, false))
+            return (Some((h.id, false)), true)
           }
         }
       }
     }
 
     val numInvokers = invokers.size
-    if (numInvokers <= 0) None
+    if (numInvokers <= 0) (None, false)
     else {
       var step = 0
       while (step < numInvokers) {
         val index = Math.floorMod(startIndex + step, numInvokers)
         val invoker = invokers(index)
         if (invoker.status.isUsable && dispatched(invoker.id.toInt).tryAcquireConcurrent(fqn, maxConcurrent, slots)) {
-          return Some((invoker.id, false))
+          return (Some((invoker.id, false)), false)
         }
         step += 1
       }
@@ -312,8 +326,8 @@ object DataProximityPoolBalancer extends LoadBalancerProvider {
         val random = healthyInvokers(ThreadLocalRandom.current().nextInt(healthyInvokers.size)).id
         dispatched(random.toInt).forceAcquireConcurrent(fqn, maxConcurrent, slots)
         logging.warn(this, s"system is overloaded. Chose invoker${random.toInt} by random assignment.")
-        Some((random, true))
-      } else None
+        (Some((random, true)), false)
+      } else (None, false)
     }
   }
 }

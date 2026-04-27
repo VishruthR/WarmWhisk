@@ -51,7 +51,7 @@ scheduler_enable: false
 # Data-proximity / round-robin balancers in this project only support managed invokers;
 # dedicate the entire fleet to managed by zeroing the blackbox fraction.
 controller_blackbox_fraction: 0.0
-controller_loadbalancer_spi: org.apache.openwhisk.core.loadBalancer.ShardingContainerPoolBalancer
+controller_loadbalancer_spi: org.apache.openwhisk.core.loadBalancer.DataProximityPoolBalancer
 controller_entitlement_spi: org.apache.openwhisk.core.entitlement.LocalEntitlementProvider
 invokerReactive_spi: org.apache.openwhisk.core.invoker.InvokerWASM
 invokerServer_spi: org.apache.openwhisk.core.invoker.DefaultInvokerServer

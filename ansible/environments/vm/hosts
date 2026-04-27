@@ -4,7 +4,7 @@
 ansible ansible_connection=local
 
 [edge]
-sp26-cs525-1820     ansible_host=sp26-cs525-1820.cs.illinois.edu ansible_connection=local
+sp26-cs525-1803     ansible_host=sp26-cs525-1820.cs.illinois.edu ansible_connection=local
 
 [controllers]
 controller0         ansible_host=sp26-cs525-1820.cs.illinois.edu ansible_connection=local
