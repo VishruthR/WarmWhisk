@@ -24,9 +24,11 @@ Crash handling:
 
 package org.apache.openwhisk.core.invoker
 
-import java.io.{BufferedReader, InputStreamReader}
+import java.io.{BufferedReader, BufferedWriter, InputStreamReader}
 import java.net.{InetAddress, InetSocketAddress, Socket}
-import java.nio.file.Path
+import java.nio.charset.StandardCharsets
+import java.nio.file.{Files, Path, StandardOpenOption}
+import java.time.Instant
 import java.util.concurrent.{ConcurrentHashMap, ConcurrentLinkedQueue, TimeUnit}
 
 import scala.concurrent.duration._
@@ -47,8 +49,10 @@ class WasmtimeServeManager(workDir: Path,
                            portRangeStart: Int = 18001,
                            portRangeEnd: Int = 18999,
                            readinessTimeout: FiniteDuration = 10.seconds,
-                           readinessPollInterval: FiniteDuration = 20.millis)(implicit ec: ExecutionContext,
-                                                                              logging: Logging) {
+                           readinessPollInterval: FiniteDuration = 20.millis,
+                           /** When set, stdout/stderr of each `wasmtime serve` process are copied here (one file per spawn). */
+                           processOutputLogDir: Option[Path] = None)(implicit ec: ExecutionContext,
+                                                                     logging: Logging) {
 
   private val availablePorts: ConcurrentLinkedQueue[Integer] = {
     val q = new ConcurrentLinkedQueue[Integer]()
@@ -191,7 +195,13 @@ class WasmtimeServeManager(workDir: Path,
             throw t
         }
       process.getOutputStream.close()
-      drainAsync(process, actionName)
+      val logFile = processOutputLogDir.map { dir =>
+        Files.createDirectories(dir)
+        val stem = safeLogFileStem(actionName)
+        dir.resolve(s"$stem-${port}-${process.pid()}.log")
+      }
+      drainAsync(process, actionName, logFile)
+      logFile.foreach(p => logging.info(this, s"[wasmtime-serve] process output log file: $p"))
 
       val spawnMs = (System.nanoTime() - t0) / 1e6
       logging.info(this, s"[wasmtime-serve] spawned action=$actionName pid=${process.pid()} in ${spawnMs}ms")
@@ -208,6 +218,7 @@ class WasmtimeServeManager(workDir: Path,
         case Failure(t) =>
           process.destroyForcibly()
           availablePorts.offer(Integer.valueOf(port))
+          // Could retry if t.getMessage includes "port already in use"
           throw new RuntimeException(
             s"wasmtime serve for '$actionName' failed to become ready on $addr: ${t.getMessage}",
             t)
@@ -240,20 +251,38 @@ class WasmtimeServeManager(workDir: Path,
 
   /**
    * Drains stdout (which includes stderr due to redirectErrorStream) so the OS
-   * pipe buffer does not fill and block wasmtime. Lines are forwarded to the logger.
+   * pipe buffer does not fill and block wasmtime. Lines are forwarded to the logger
+   * and optionally appended to `logFile`.
    */
-  private def drainAsync(process: Process, actionName: String): Unit = {
+  private def drainAsync(process: Process, actionName: String, logFile: Option[Path]): Unit = {
     val t = new Thread(
       () => {
         val reader = new BufferedReader(new InputStreamReader(process.getInputStream))
+        var fileWriter: BufferedWriter = null
         try {
+          logFile.foreach { p =>
+            fileWriter = Files.newBufferedWriter(
+              p,
+              StandardCharsets.UTF_8,
+              StandardOpenOption.CREATE,
+              StandardOpenOption.TRUNCATE_EXISTING)
+            fileWriter.write(s"# wasmtime serve log started ${Instant.now()} action=$actionName\n")
+            fileWriter.flush()
+          }
           var line: String = reader.readLine()
           while (line != null) {
             logging.info(this, s"[wasmtime-serve:$actionName] $line")
+            if (fileWriter != null) {
+              fileWriter.write(line)
+              fileWriter.newLine()
+              fileWriter.flush()
+            }
             line = reader.readLine()
           }
         } catch { case _: Throwable => () } finally {
           try reader.close()
+          catch { case _: Throwable => () }
+          try if (fileWriter != null) fileWriter.close()
           catch { case _: Throwable => () }
         }
       },
@@ -261,4 +290,8 @@ class WasmtimeServeManager(workDir: Path,
     t.setDaemon(true)
     t.start()
   }
+
+  /** File name fragment for log paths (action names may contain path-like segments). */
+  private def safeLogFileStem(actionName: String): String =
+    actionName.replaceAll("[^a-zA-Z0-9._-]", "_")
 }

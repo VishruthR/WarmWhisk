@@ -52,7 +52,7 @@ scheduler_enable: false
 # dedicate the entire fleet to managed by zeroing the blackbox fraction.
 controller_blackbox_fraction: 0.0
 # Round-robin over invokers (same capacity model as sharding).
-controller_loadbalancer_spi: org.apache.openwhisk.core.loadBalancer.DataProximityPoolBalancer
+controller_loadbalancer_spi: org.apache.openwhisk.core.loadBalancer.RoundRobinPoolBalancer
 controller_entitlement_spi: org.apache.openwhisk.core.entitlement.LocalEntitlementProvider
 invokerReactive_spi: org.apache.openwhisk.core.invoker.InvokerWASM
 invokerServer_spi: org.apache.openwhisk.core.invoker.DefaultInvokerServer

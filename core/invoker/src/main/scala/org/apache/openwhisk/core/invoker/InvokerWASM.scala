@@ -85,7 +85,9 @@ class InvokerWASM(
   private val namespaceBlacklist = new NamespaceBlacklist(authStore)
 
   private val currentPath = java.nio.file.Paths.get(".").toAbsolutePath.normalize.toString
-  private val serveManager = new WasmtimeServeManager(Paths.get(currentPath))
+  private val wasmtimeServeLogDir = Paths.get(currentPath).resolve("wasmtime-serve-logs")
+  private val serveManager =
+    new WasmtimeServeManager(Paths.get(currentPath), processOutputLogDir = Some(wasmtimeServeLogDir))
 
   Scheduler.scheduleWaitAtMost(loadConfigOrThrow[NamespaceBlacklistConfig](ConfigKeys.blacklist).pollInterval) { () =>
     logging.debug(this, "running background job to update blacklist")
