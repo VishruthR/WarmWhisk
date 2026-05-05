@@ -103,9 +103,11 @@ class KamonRecorderTests extends KafkaSpecBase with BeforeAndAfterEach with Kamo
     TestReporter.histogram(waitTimeMetric, namespaceDemo, actionWithCustomPackage).size shouldBe 1
     TestReporter.histogram(initTimeMetric, namespaceDemo, actionWithCustomPackage).size shouldBe 1
     TestReporter.histogram(durationMetric, namespaceDemo, actionWithCustomPackage).size shouldBe 1
+    TestReporter.histogram(totalTimeMetric, namespaceDemo, actionWithCustomPackage).size shouldBe 1
 
     // Default package
     TestReporter.histogram(durationMetric, namespaceDemo, actionWithDefaultPackage).size shouldBe 1
+    TestReporter.histogram(totalTimeMetric, namespaceDemo, actionWithDefaultPackage).size shouldBe 1
 
     // Blacklisted namespace should not be tracked
     TestReporter.counter(activationMetric, namespaceGuest, actionWithDefaultPackage) shouldBe empty

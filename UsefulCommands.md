@@ -8,7 +8,7 @@ cd ansible
 ansible-playbook -i environments/$ENVIRONMENT couchdb.yml
 ansible-playbook -i environments/$ENVIRONMENT initdb.yml
 ansible-playbook -i environments/$ENVIRONMENT wipe.yml # wipes DB, BE CAREFUL!!!
-ansible-playbook -i environments/$ENVIRONMENT openwhisk.yml
+ansible-playbook -i environments/$ENVIRONMENT invoker.yml
 
 # Test using wsk CLI tool
 # For many commands you may have to use the -i flag unless you set up certs
@@ -110,4 +110,6 @@ for ((i=$START_INDEX; i<=$END_INDEX; i++)); do
 done
 
 EOF
+chmod +x seed_images.sh
+./seed_images.sh
 ```

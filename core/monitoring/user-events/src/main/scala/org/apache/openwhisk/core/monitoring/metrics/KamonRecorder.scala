@@ -32,6 +32,7 @@ trait KamonMetricNames extends MetricNames {
   val waitTimeMetric = "openwhisk.action.waitTime"
   val initTimeMetric = "openwhisk.action.initTime"
   val durationMetric = "openwhisk.action.duration"
+  val totalTimeMetric = "openwhisk.action.totalTime"
   val responseSizeMetric = "openwhisk.action.responseSize"
   val statusMetric = "openwhisk.action.status"
   val userDefinedStatusCodeMetric = "openwhisk.action.statusCode"
@@ -101,6 +102,7 @@ object KamonRecorder extends MetricRecorder with KamonMetricNames with SLF4JLogg
     private val waitTime = Kamon.histogram(waitTimeMetric, MeasurementUnit.time.milliseconds).withTags(tags)
     private val initTime = Kamon.histogram(initTimeMetric, MeasurementUnit.time.milliseconds).withTags(tags)
     private val duration = Kamon.histogram(durationMetric, MeasurementUnit.time.milliseconds).withTags(tags)
+    private val totalTime = Kamon.histogram(totalTimeMetric, MeasurementUnit.time.milliseconds).withTags(tags)
     private val responseSize = Kamon.histogram(responseSizeMetric, MeasurementUnit.information.bytes).withTags(tags)
     private val userDefinedStatusCode = Kamon.counter(userDefinedStatusCodeMetric).withTags(tags)
 
@@ -119,6 +121,7 @@ object KamonRecorder extends MetricRecorder with KamonMetricNames with SLF4JLogg
       //waitTime may be zero for activations which are part of sequence
       waitTime.record(a.waitTime.toMillis)
       duration.record(a.duration.toMillis)
+      totalTime.record((a.waitTime + a.duration).toMillis)
 
       Kamon.counter(statusMetric).withTags(tags.withTag("status", a.status)).increment()
 

@@ -42,6 +42,7 @@ trait PrometheusMetricNames extends MetricNames {
   val waitTimeMetric = "openwhisk_action_waitTime_seconds"
   val initTimeMetric = "openwhisk_action_initTime_seconds"
   val durationMetric = "openwhisk_action_duration_seconds"
+  val totalTimeMetric = "openwhisk_action_totalTime_seconds"
   val responseSizeMetric = "openwhisk_action_response_size_bytes"
   val statusMetric = "openwhisk_action_status"
   val memoryMetric = "openwhisk_action_memory"
@@ -108,6 +109,7 @@ case class PrometheusRecorder(kamon: PrometheusReporter, config: MetricConfig)
     private val waitTime = promMetrics.waitTimeHisto.labels(namespace, initiatorNamespace, action)
     private val initTime = promMetrics.initTimeHisto.labels(namespace, initiatorNamespace, action)
     private val duration = promMetrics.durationHisto.labels(namespace, initiatorNamespace, action)
+    private val totalTime = promMetrics.totalTimeHisto.labels(namespace, initiatorNamespace, action)
     private val responseSize = promMetrics.responseSizeHisto.labels(namespace, initiatorNamespace, action)
 
     private val gauge = promMetrics.memoryGauge.labels(namespace, initiatorNamespace, action)
@@ -138,6 +140,8 @@ case class PrometheusRecorder(kamon: PrometheusReporter, config: MetricConfig)
       //waitTime may be zero for activations which are part of sequence
       waitTime.observe(seconds(a.waitTime))
       duration.observe(seconds(a.duration))
+      // waitTime + duration: scheduling/queue hold through invoker completion (duration includes cold init+run)
+      totalTime.observe(seconds(a.waitTime + a.duration))
 
       a.status match {
         case ActivationResponse.statusSuccess          => statusSuccess.inc()
@@ -189,6 +193,14 @@ case class PrometheusRecorder(kamon: PrometheusReporter, config: MetricConfig)
 
     val durationHisto =
       histogram(durationMetric, "Actual time the action code was running", namespace, initiator, action)
+
+    val totalTimeHisto =
+      histogram(
+        totalTimeMetric,
+        "Time from transaction start through invoker completion (wait time plus execution interval, including init)",
+        namespace,
+        initiator,
+        action)
 
     val responseSizeHisto =
       Histogram
