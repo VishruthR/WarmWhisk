@@ -20,111 +20,52 @@
 # OpenWhisk
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](http://www.apache.org/licenses/LICENSE-2.0)
-[![Join Slack](https://img.shields.io/badge/join-slack-9B69A0.svg)](https://openwhisk-team.slack.com/)
-[![Twitter](https://img.shields.io/twitter/follow/openwhisk.svg?style=social&logo=twitter)](https://twitter.com/intent/follow?screen_name=openwhisk)
 
-[![Unit Tests](https://github.com/apache/openwhisk/actions/workflows/1-unit.yaml/badge.svg)](https://github.com/apache/openwhisk/actions/workflows/1-unit.yaml)
-[![System Tests](https://github.com/apache/openwhisk/actions/workflows/2-system.yaml/badge.svg)](https://github.com/apache/openwhisk/actions/workflows/2-system.yaml)
-[![MultiRuntime Tests](https://github.com/apache/openwhisk/actions/workflows/3-multi-runtime.yaml/badge.svg)](https://github.com/apache/openwhisk/actions/workflows/3-multi-runtime.yaml)
-[![Standalone Tests](https://github.com/apache/openwhisk/actions/workflows/4-standalone.yaml/badge.svg)](https://github.com/apache/openwhisk/actions/workflows/4-standalone.yaml)
-[![Scheduler Tests](https://github.com/apache/openwhisk/actions/workflows/5-scheduler.yaml/badge.svg)](https://github.com/apache/openwhisk/actions/workflows/5-scheduler.yaml)
-[![Performance Tests](https://github.com/apache/openwhisk/actions/workflows/6-performance.yaml/badge.svg)](https://github.com/apache/openwhisk/actions/workflows/6-performance.yaml)
-[![codecov](https://codecov.io/gh/apache/openwhisk/branch/master/graph/badge.svg)](https://codecov.io/gh/apache/openwhisk)
+:warning: **This project is a research prototype built for [CS525](https://courses.grainger.illinois.edu/cs525/sp2026/) at the University of Illinois - Urbana Champaign** :warning
 
-OpenWhisk is a serverless functions platform for building cloud applications.
-OpenWhisk offers a rich programming model for creating serverless APIs from functions,
-composing functions into serverless workflows, and connecting events to functions using rules and triggers.
-Learn more at [http://openwhisk.apache.org](http://openwhisk.apache.org).
+WarmWhisk is a serverless functions platform built on top of [Apache OpenWhisk](https://github.com/apache/openwhisk) (v2.0.0.). It takes advantage of the WebAssembly (WASM) runtimes unique properties to enable low cold-start function execution and flexible scheduling. The purpose of this research project was to validate the potential of WASM in serverless situations, therefore, this project is not production-ready and requires enhancements and further testing.
 
-* [Quick Start](#quick-start) (Deploy and Use OpenWhisk on your machine)
-* [Deploy to Kubernetes](#deploy-to-kubernetes) (For development and production)
-* For project contributors and Docker deployments:
-  * [Deploy to Docker for Mac](./tools/macos/README.md)
-  * [Deploy to Docker for Ubuntu](./tools/ubuntu-setup/README.md)
-* [Learn Concepts and Commands](#learn-concepts-and-commands)
-* [OpenWhisk Community and Support](#openwhisk-community-and-support)
-* [Project Repository Structure](#project-repository-structure)
+Compared to OpenWhisk, WarmWhisk demonstrates a **40.8x** improvement in worst-case action latency during cold starts and a **77x** reduction in peak memory usage. However, post warm-up, OpenWhisk can execute functions 10% faster than WarmWhisk due to WASM runtime overhead. WarmWhisk also outperforms other WASM based serverless function platforms like SpinKube and WOW. Finally, we implement a data proximity scheduler which demonstrates that low cold-start times enable new shcheduling algorithms that can dramatically improve the performance of some workloads. 
 
-### Notice of Breaking Upgrade 10/17/2025
+You can read more about the project in this high-level blog post or this thorough paper.
 
-Apache Openwhisk has migrated to the Apache Pekko framework. The master branch as of 10/17/2025 uses Apache Pekko. This change results in a breaking change such that you must re-deploy new clusters and cutover traffic to the new cluster. All other changes should be transient to you other than instead of using Akka configuration overrides in your deployments, you would now need to update those to use the Pekko equivalent. A 3.x release branch will eventually follow this
-change.
+## How to use
 
-### Quick Start
+:warning: **Since this project is a prototype, expect bugs** :warning:
 
-The easiest way to start using OpenWhisk is to install the "Standalone" OpenWhisk stack.
-This is a full-featured OpenWhisk stack running as a Java process for convenience.
-Serverless functions run within Docker containers. You will need [Docker](https://docs.docker.com/install),
-[Java](https://java.com/en/download/help/download_options.xml) and [Node.js](https://nodejs.org) available on your machine.
+### Prerequisites
+1. Clone the original [OpenWhisk](https://github.com/apache/openwhisk) repo and set up OpenWhisk with the [ansible](https://github.com/VishruthR/WarmWhisk/blob/9b722531125dcf24b3a0b9a7cecfbb7575f8b290/ansible/README.md) instructions. This will install prerequisites and ensure your machine works with regular OpenWhisk.
 
-To get started:
-```
-git clone https://github.com/apache/openwhisk.git
-cd openwhisk
-./gradlew core:standalone:bootRun
-```
+2. Build the WarmWhisk version of the [`wsk` cli tool](https://github.com/VishruthR/openwhisk-cli)
 
-- When the OpenWhisk stack is up, it will open your browser to a functions [Playground](./docs/images/playground-ui.png),
-typically served from http://localhost:3232. The Playground allows you create and run functions directly from your browser.
+3. Install `docker`, `ansible`, `nodejs`
 
-- To make use of all OpenWhisk features, you will need the OpenWhisk command line tool called
-`wsk` which you can download from https://s.apache.org/openwhisk-cli-download.
-Please refer to the [CLI configuration](./docs/cli.md) for additional details. Typically you
-configure the CLI for Standalone OpenWhisk as follows:
-```
-wsk property set \
-  --apihost 'http://localhost:3233' \
-  --auth '23bc46b1-71f6-4ed5-8c54-816aa4f8c502:123zO3xZCLrMN6v2BKK1dXYFpXlPkccOFqm12CdAsMgRU4VrNZ9lyGVCGuMDGIwP'
-```
+### Running WarmWhisk
 
-- Standalone OpenWhisk can be configured to deploy additional capabilities when that is desirable.
-Additional resources are available [here](./core/standalone/README.md).
+You can edit [`group_vars`](ansible/environments/local/group_vars/all) for the `local` environment here. This will allow you to opt-into WASM execution and select the load balancer you wish to use. By default, the WASM invoker and DataProximityLoadBalancer are enabled.
 
-### Deploy to Kubernetes
-
-OpenWhisk can also be installed on a Kubernetes cluster. You can use
-a managed Kubernetes cluster provisioned from a public cloud provider
-(e.g., AKS, EKS, IKS, GKE), or a cluster you manage yourself.
-Additionally for local development, OpenWhisk is compatible with Minikube,
-and Kubernetes for Mac using the support built into Docker 18.06 (or higher).
-
-To get started:
+If you are interested in a distributed setup, check out [these instructions](setup_ow/DistributedOWSetup.md)
 
 ```
-git clone https://github.com/apache/openwhisk-deploy-kube.git
+# Set the environment
+export ENVIRONMENT=local
+
+cd OpenWhisk
+./start_up_ow.sh
+
+# Configure wsk CLI tool
+wsk property set --apihost sp26-cs525-1820.cs.illinois.edu
+wsk property set --auth '23bc46b1-71f6-4ed5-8c54-816aa4f8c502:123zO3xZCLrMN6v2BKK1dXYFpXlPkccOFqm12CdAsMgRU4VrNZ9lyGVCGuMDGIwP'
+
+# Test
+wsk -i action create fib_wasm wasm_programs/fib.wasm --kind wasm:wasmtime --main _start
+wsk -i action invoke fib_wasm --result --param n 10
 ```
 
-Then follow the instructions in the [OpenWhisk on Kubernetes README.md](https://github.com/apache/openwhisk-deploy-kube/blob/master/README.md).
+[Instructions](metrics/README.md) for collecting metrics are here.
 
-### Learn Concepts and Commands
+#### Data Dependencies
 
-Browse the [documentation](docs/) to learn more. Here are some topics you may be
-interested in:
+The `DataProximityLoadBalancer` routes function invocations to invokers that already have a dependency on disk. To specify a dependency, include the `--param data_dependency [filename]` option when running `wsk action invoke`.
 
-- [System overview](docs/about.md)
-- [Getting Started](docs/README.md)
-- [Create and invoke actions](docs/actions.md)
-- [Create triggers and rules](docs/triggers_rules.md)
-- [Use and create packages](docs/packages.md)
-- [Browse and use the catalog](docs/catalog.md)
-- [OpenWhisk system details](docs/reference.md)
-- [Implementing feeds](docs/feeds.md)
-- [Developing a runtime for a new language](docs/actions-actionloop.md)
 
-### OpenWhisk Community and Support
-
-Report bugs, ask questions and request features [here on GitHub](../../issues).
-
-You can also join the OpenWhisk Team on Slack [https://openwhisk-team.slack.com](https://openwhisk-team.slack.com) and chat with developers. To get access to our public Slack team, request an invite [https://openwhisk.apache.org/slack.html](https://openwhisk.apache.org/slack.html).
-
-### Project Repository Structure
-
-The OpenWhisk system is built from a [number of components](docs/dev/modules.md).  The picture below groups the components by their GitHub repos. Please open issues for a component against the appropriate repo (if in doubt just open against the main openwhisk repo).
-
-![component/repo mapping](docs/images/components_to_repos.png)
-
-### What happens on an invocation?
-
-This diagram depicts the steps which take place within Openwhisk when an action is invoked by the user:
-
-![component/repo mapping](docs/images/Openwhisk-flow-diagram.png)
