@@ -47,7 +47,7 @@
 #
 - name: "pull runtime action images per manifest"
   shell: "docker pull {{runtimes_registry | default()}}{{inv_item.prefix}}/{{inv_item.name}}:{{inv_item.tag | default()}}"
-  loop: "{{ runtimesManifest.runtimes.values() | sum(start=[]) | selectattr('deprecated', 'equalto',false)  | map(attribute='image') | list | unique }}"
+  loop: "{{ runtimesManifest.runtimes.values() | sum(start=[]) | selectattr('deprecated', 'equalto',false) | selectattr('image', 'defined') | map(attribute='image') | list | unique }}"
   when: skip_pull_runtimes is not defined or not (skip_pull_runtimes == True or skip_pull_runtimes.lower() == "true")
   register: result
   until: (result.rc == 0)
@@ -269,6 +269,8 @@
       "CONFIG_kamon_statsd_port": "{{ metrics.kamon.port }}"
       "CONFIG_whisk_spi_LogStoreProvider": "{{ userLogs.spi }}"
       "CONFIG_whisk_spi_InvokerProvider": "{{ invoker.reactiveSpi }}"
+      "CONFIG_whisk_loadbalancer_invokerHealthTestAction_name":
+        "{{ invoker_health_test_action_name | default('invokerHealthTestAction') }}"
       "CONFIG_whisk_spi_InvokerServerProvider": "{{ invoker.serverSpi }}"
       "CONFIG_logback_log_level": "{{ invoker.loglevel }}"
       "CONFIG_whisk_memory_min": "{{ limit_action_memory_min | default() }}"
@@ -445,6 +447,38 @@
     ports: "{{ invoker_ports_to_expose }}"
     command: /bin/sh -c "exec /init.sh --id {{ invoker_index }} --uniqueName {{ invoker_index }} >> /logs/{{ invoker_name }}_logs.log 2>&1"
   when: not lean
+
+# Using specific commit since pulling versions was failing
+- name: pull cAdvisor image
+  shell: "docker pull {{ invoker_cadvisor_image | default('ghcr.io/google/cadvisor:7cbdee9-7cbdee9260c4292d5d27d00416ce8a7dc1dc12a0') }}"
+  register: cadvisor_pull
+  until: cadvisor_pull.rc == 0
+  retries: "{{ docker.pull.retries }}"
+  delay: "{{ docker.pull.delay }}"
+  when: not lean and (invoker_cadvisor_enabled | default(true) | bool)
+
+- name: start cAdvisor
+  docker_container:
+    name: "cadvisor-{{ invoker_name }}"
+    image: "{{ invoker_cadvisor_image | default('ghcr.io/google/cadvisor:7cbdee9-7cbdee9260c4292d5d27d00416ce8a7dc1dc12a0') }}"
+    privileged: true
+    userns_mode: host
+    pid_mode: host
+    restart_policy: "{{ docker.restart.policy }}"
+    state: started
+    recreate: true
+    ports:
+      - "{{ invoker_cadvisor_port | default(8005) }}:8080"
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - "{{ dockerInfo['DockerRootDir'] }}:{{ dockerInfo['DockerRootDir'] }}:ro"
+      - /dev/disk/:/dev/disk:ro
+  when: not lean and (invoker_cadvisor_enabled | default(true) | bool)
 
 - name: wait until Invoker is up and running
   block:

@@ -75,6 +75,9 @@ case class EventConsumer(settings: ConsumerSettings[String, String],
   private val duration =
     Kamon.histogram("openwhisk.userevents.global.duration", MeasurementUnit.time.milliseconds).withoutTags()
 
+  private val totalTime =
+    Kamon.histogram("openwhisk.userevents.global.totalTime", MeasurementUnit.time.milliseconds).withoutTags()
+
   private val lagGauge = Kamon.gauge("openwhisk.userevents.consumer.lag").withoutTags()
 
   def shutdown(): Future[Done] = {
@@ -157,6 +160,7 @@ case class EventConsumer(settings: ConsumerSettings[String, String],
 
     waitTime.record(a.waitTime.toMillis)
     duration.record(a.duration.toMillis)
+    totalTime.record((a.waitTime + a.duration).toMillis)
   }
 
   private def updatedSettings =

@@ -42,6 +42,10 @@
     local_action: template src="{{playbook_dir}}/environments/jenkins/hosts.j2.ini" dest="{{ playbook_dir }}/environments/jenkins/hosts"
     when: "'environments/jenkins' in hosts_dir"
 
+  - name: gen hosts if 'vm' env is used
+    local_action: template src="{{playbook_dir}}/environments/vm/hosts.j2.ini" dest="{{ playbook_dir }}/environments/vm/hosts"
+    when: "'environments/vm' in hosts_dir"
+
   - name: Refresh inventory to ensure generated hosts files are used
     meta: refresh_inventory
 

@@ -31,6 +31,7 @@ trait MetricNames {
   def waitTimeMetric: String
   def initTimeMetric: String
   def durationMetric: String
+  def totalTimeMetric: String
   def statusMetric: String
   def responseSizeMetric: String
   def userDefinedStatusCodeMetric: String

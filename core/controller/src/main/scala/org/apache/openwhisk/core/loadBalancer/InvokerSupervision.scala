@@ -60,6 +60,9 @@ case class InvocationFinishedMessage(invokerInstance: InvokerInstanceId, result:
 // Sent to a monitor if the state changed
 case class CurrentInvokerPoolState(newState: IndexedSeq[InvokerHealth])
 
+// Sent to monitor whenever local files exists
+case class InvokerLocalFiles(instance: InvokerInstanceId, localFiles: Option[Seq[String]])
+
 // Data stored in the Invoker
 final case class InvokerInfo(buffer: RingBuffer[InvocationFinishedResult])
 
@@ -106,6 +109,10 @@ class InvokerPool(childFactory: (ActorRefFactory, InvokerInstanceId) => ActorRef
       }
 
       invoker.forward(p)
+
+      if (p.localFiles.isDefined) {
+        monitor.foreach(_ ! InvokerLocalFiles(p.instance, p.localFiles))
+      }
 
     case GetStatus => sender() ! status
 
@@ -214,6 +221,16 @@ object InvokerPool {
    * @return throws an exception on failure to prepare
    */
   def prepare(controllerInstance: ControllerInstanceId, entityStore: EntityStore): Unit = {
+    // OPTIONAL LOGGIN, CAN REMOVE LATER
+    implicit val transid: TransactionId = TransactionId.loadbalancer
+    implicit val logging: Logging = entityStore.logging
+    val cfg = InvokerHealthTestActionConfig.load()
+    val entityName = InvokerHealthTestActionBuilder.entityNameForController(controllerInstance, cfg)
+    val kind = if (InvokerHealthTestActionConfig.isWasmMode(cfg)) "wasm" else "nodejs"
+    logging.info(
+      InvokerPool,
+      s"Invoker health test action: kind=$kind, config.name=${cfg.name}, entityName=${entityName.asString}")
+
     InvokerPool
       .healthAction(controllerInstance)
       .map {
@@ -242,15 +259,9 @@ object InvokerPool {
     Identity(Subject(whiskSystem), Namespace(EntityName(whiskSystem), uuid), BasicAuthenticationAuthKey(uuid, Secret()))
   }
 
-  /** An action to use for monitoring invoker health. */
+  /** An action to use for monitoring invoker health (see `whisk.loadbalancer.invoker-health-test-action`). */
   def healthAction(i: ControllerInstanceId): Option[WhiskAction] =
-    ExecManifest.runtimesManifest.resolveDefaultRuntime("nodejs:default").map { manifest =>
-      new WhiskAction(
-        namespace = healthActionIdentity.namespace.name.toPath,
-        name = EntityName(s"invokerHealthTestAction${i.asString}"),
-        exec = CodeExecAsString(manifest, """function main(params) { return params; }""", None),
-        limits = ActionLimits(memory = MemoryLimit(MemoryLimit.MIN_MEMORY)))
-    }
+    InvokerHealthTestActionBuilder.forController(healthActionIdentity, i)
 }
 
 /**

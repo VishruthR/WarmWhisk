@@ -53,6 +53,15 @@
   when: zeroDowntimeDeployment.enabled == true and enable_scheduler
   ignore_errors: "{{ invoker.deployment.ignore_error }}"
 
+- name: remove cAdvisor
+  docker_container:
+    name: "cadvisor-{{ invoker_name }}"
+    state: absent
+    stop_timeout: 60
+    timeout: 120
+  ignore_errors: true
+  when: invoker_cadvisor_enabled | default(true) | bool
+
 - name: remove invoker
   docker_container:
     name: "{{ invoker_name }}"
