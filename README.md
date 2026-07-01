@@ -21,9 +21,9 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](http://www.apache.org/licenses/LICENSE-2.0)
 
-:warning: **This project is a research prototype built for [CS525](https://courses.grainger.illinois.edu/cs525/sp2026/) at the University of Illinois - Urbana Champaign** :warning
+:warning: **This project is a research prototype built for [CS525](https://courses.grainger.illinois.edu/cs525/sp2026/) at the University of Illinois - Urbana Champaign** :warning:
 
-WarmWhisk is a serverless functions platform built on top of [Apache OpenWhisk](https://github.com/apache/openwhisk) (v2.0.0.). It takes advantage of the WebAssembly (WASM) runtimes unique properties to enable low cold-start function execution and flexible scheduling. The purpose of this research project was to validate the potential of WASM in serverless situations, therefore, this project is not production-ready and requires enhancements and further testing.
+WarmWhisk is a serverless functions platform built on top of [Apache OpenWhisk](https://github.com/apache/openwhisk) (v2.0.0.). It takes advantage of the WebAssembly (WASM) runtimes unique properties to enable low cold-start function execution and flexible scheduling. The purpose of this research project is to validate the potential of WASM in serverless situations, therefore, this project is not production-ready and requires enhancements and further testing.
 
 Compared to OpenWhisk, WarmWhisk demonstrates a **40.8x** improvement in worst-case action latency during cold starts and a **77x** reduction in peak memory usage. However, post warm-up, OpenWhisk can execute functions 10% faster than WarmWhisk due to WASM runtime overhead. WarmWhisk also outperforms other WASM based serverless function platforms like SpinKube and WOW. Finally, we implement a data proximity scheduler which demonstrates that low cold-start times enable new shcheduling algorithms that can dramatically improve the performance of some workloads. 
 
