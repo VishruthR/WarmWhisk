@@ -38,7 +38,7 @@ You can read more about the project in this high-level blog post or this thoroug
 
 2. Build the WarmWhisk version of the [`wsk` cli tool](https://github.com/VishruthR/openwhisk-cli)
 
-3. Install `docker`, `ansible`, `nodejs`
+3. Install `docker`, `ansible`, `nodejs`, `wasmtime`
 
 ### Running WarmWhisk
 
@@ -68,4 +68,7 @@ wsk -i action invoke fib_wasm --result --param n 10
 
 The `DataProximityLoadBalancer` routes function invocations to invokers that already have a dependency on disk. To specify a dependency, include the `--param data_dependency [filename]` option when running `wsk action invoke`.
 
+#### Creating your own WASM functions
+
+All WASM functions must be compiled by [`wasmtime`](https://docs.wasmtime.dev/). WarmWhisk allows a user to specify the entrypoint for their function using the `--main` flag on incovation. If you compile thru `wasmtime`, the default entrypoint should be `_start`.  
 
